@@ -1,0 +1,46 @@
+machine_name: "Default 3-Axis CNC"
+controller_name: "generic"
+units: "mm"
+
+axes:
+  X:
+    rapid_velocity_mm_min: 10000
+    max_velocity_mm_min: 12000
+    max_acc_mm_s2: 1000
+    max_jerk_mm_s3: 10000
+  Y:
+    rapid_velocity_mm_min: 10000
+    max_velocity_mm_min: 12000
+    max_acc_mm_s2: 1000
+    max_jerk_mm_s3: 10000
+  Z:
+    rapid_velocity_mm_min: 5000
+    max_velocity_mm_min: 10000
+    max_acc_mm_s2: 800
+    max_jerk_mm_s3: 8000
+
+rapid_feed_mm_min: 10000
+max_cut_feed_mm_min: 6000
+default_cut_feed_mm_min: 1000
+default_cut_acc_mm_s2: 800
+arc_tolerance_mm: 0.01
+
+controller:
+  interpolation_period_ms: 2
+  lookahead_blocks: 100
+  junction_tolerance_mm: 0.01
+  dwell_p_unit: "ms"
+  dwell_x_unit: "sec"
+
+event_time:
+  tool_change_sec: 8.0
+  spindle_start_sec: 2.0
+  spindle_stop_sec: 1.0
+  coolant_on_sec: 0.5
+  coolant_off_sec: 0.5
+
+cycle:
+  peck_clearance_mm: 1.0
+
+time_model:
+  mode: "constant_velocity"
