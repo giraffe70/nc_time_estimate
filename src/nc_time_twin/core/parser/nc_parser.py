@@ -8,9 +8,12 @@ from nc_time_twin.core.ir.blocks import (
     CoolantEventBlock,
     DwellBlock,
     LinearMoveBlock,
+    OptionalStopBlock,
     Position,
     ProgramEndBlock,
     RapidMoveBlock,
+    ReferenceReturnBlock,
+    SmoothingEventBlock,
     SpindleEventBlock,
     ToolChangeBlock,
     UnknownBlock,
@@ -89,6 +92,8 @@ def build_ir_blocks(
     blocks: list[BaseBlock] = []
 
     blocks.extend(_build_m_code_blocks(line_no, raw, tokens, state))
+    if tokens.contains_g(5):
+        blocks.append(SmoothingEventBlock(line_no=line_no, raw=raw, code="G5"))
 
     if tokens.contains_g(4):
         blocks.append(
@@ -98,6 +103,20 @@ def build_ir_blocks(
                 dwell_time_sec=parse_dwell_time(tokens, machine_profile),
             )
         )
+        return blocks
+
+    if tokens.contains_g(28) or tokens.contains_g(30):
+        code = "G28" if tokens.contains_g(28) else "G30"
+        blocks.append(
+            ReferenceReturnBlock(
+                line_no=line_no,
+                raw=raw,
+                start=prev_state.current_position,
+                code=code,
+                axes=_reference_return_axes(tokens),
+            )
+        )
+        _apply_reference_return_position(state, prev_state.current_position, tokens, machine_profile)
         return blocks
 
     if state.canned_cycle and _should_expand_cycle(tokens):
@@ -174,7 +193,9 @@ def _build_m_code_blocks(
 ) -> list[BaseBlock]:
     blocks: list[BaseBlock] = []
     for m_code in tokens.m_codes():
-        if m_code == 6:
+        if m_code == 1:
+            blocks.append(OptionalStopBlock(line_no=line_no, raw=raw))
+        elif m_code == 6:
             blocks.append(ToolChangeBlock(line_no=line_no, raw=raw, tool_id=state.current_tool))
         elif m_code in {3, 4}:
             blocks.append(
@@ -194,6 +215,26 @@ def _build_m_code_blocks(
         elif m_code == 30:
             blocks.append(ProgramEndBlock(line_no=line_no, raw=raw))
     return blocks
+
+
+def _reference_return_axes(tokens: TokenizedLine) -> tuple[str, ...]:
+    axes = tuple(letter for letter in ("X", "Y", "Z") if tokens.get_float(letter) is not None)
+    return axes or ("X", "Y", "Z")
+
+
+def _apply_reference_return_position(
+    state: ModalState,
+    start: Position,
+    tokens: TokenizedLine,
+    machine_profile: MachineProfile,
+) -> None:
+    axes = _reference_return_axes(tokens)
+    reference = machine_profile.reference_return
+    state.current_position = Position(
+        x=reference.axis_position("X") if "X" in axes else start.x,
+        y=reference.axis_position("Y") if "Y" in axes else start.y,
+        z=reference.axis_position("Z") if "Z" in axes else start.z,
+    )
 
 
 def _should_expand_cycle(tokens: TokenizedLine) -> bool:

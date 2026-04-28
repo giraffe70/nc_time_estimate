@@ -7,8 +7,35 @@ from nc_time_twin.core.ir.blocks import Position
 from nc_time_twin.core.parser.tokenizer import TokenizedLine
 
 
-SUPPORTED_G = {0, 1, 2, 3, 4, 17, 18, 19, 20, 21, 80, 81, 82, 83, 90, 91, 93, 94, 95}
-SUPPORTED_M = {3, 4, 5, 6, 8, 9, 30}
+SUPPORTED_G = {
+    0,
+    1,
+    2,
+    3,
+    4,
+    5,
+    17,
+    18,
+    19,
+    20,
+    21,
+    28,
+    30,
+    40,
+    43,
+    49,
+    54,
+    80,
+    81,
+    82,
+    83,
+    90,
+    91,
+    93,
+    94,
+    95,
+}
+SUPPORTED_M = {1, 3, 4, 5, 6, 8, 9, 30}
 
 
 @dataclass
@@ -24,6 +51,7 @@ class ModalState:
     current_tool: int | None = None
     coolant_on: bool = False
     spindle_on: bool = False
+    smoothing_on: bool = False
     canned_cycle: str | None = None
     cycle_params: dict[str, float] = field(default_factory=dict)
 
@@ -49,6 +77,8 @@ def update_modal_state(state: ModalState, tokens: TokenizedLine) -> list[str]:
         elif g == 3:
             state.motion = "G03"
             state.canned_cycle = None
+        elif g == 5:
+            state.smoothing_on = True
         elif g in {81, 82, 83}:
             state.canned_cycle = f"G{g:02d}"
         elif g == 80:
@@ -73,6 +103,8 @@ def update_modal_state(state: ModalState, tokens: TokenizedLine) -> list[str]:
             state.feed_mode = "G94"
         elif g == 95:
             state.feed_mode = "G95"
+        elif g in {28, 30, 40, 43, 49, 54}:
+            continue
 
     if tokens.get_float("F") is not None:
         state.feedrate = tokens.get_float("F")

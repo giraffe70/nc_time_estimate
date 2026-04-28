@@ -65,3 +65,67 @@ def test_relative_coordinates(write_nc, profile_path) -> None:
     linear_blocks = [block for block in result.ir_program if block.display_type == "linear"]
     assert linear_blocks[-1].end.as_tuple() == (30.0, 0.0, 0.0)
     assert math.isclose(sum(block.length for block in linear_blocks), 30.0, rel_tol=1e-9)
+
+
+def test_supported_modal_noops_do_not_emit_warnings(write_nc, profile_path) -> None:
+    nc = write_nc(
+        """
+        G21 G90
+        G40 G43 G49 G54
+        G01 X10 F1000
+        """
+    )
+    result = estimate_nc_time(nc, profile_path)
+    assert not any("Unsupported G-code" in warning for warning in result.warning_list)
+
+
+def test_g28_reference_return_is_explicitly_unestimated(write_nc, profile_path) -> None:
+    nc = write_nc(
+        """
+        G21 G90
+        G28 Z0
+        """
+    )
+    result = estimate_nc_time(nc, profile_path)
+    assert any("G28 reference return time is not estimated" in warning for warning in result.warning_list)
+
+
+def test_g28_reference_return_can_use_fixed_profile_time(write_nc, profile_path, tmp_path) -> None:
+    profile = tmp_path / "profile_reference_fixed.yaml"
+    profile.write_text(
+        profile_path.read_text(encoding="utf-8").replace(
+            'reference_return:\n  mode: "unestimated"\n  fixed_time_sec: 0.0',
+            'reference_return:\n  mode: "fixed"\n  fixed_time_sec: 2.5',
+        ),
+        encoding="utf-8",
+    )
+    nc = write_nc(
+        """
+        G21 G90
+        G28 Z0
+        """
+    )
+    result = estimate_nc_time(nc, profile)
+    assert math.isclose(result.reference_return_time_sec, 2.5, rel_tol=1e-9)
+    assert not any("G28 reference return time is not estimated" in warning for warning in result.warning_list)
+
+
+def test_m1_optional_stop_and_g5_smoothing_are_supported(write_nc, profile_path, tmp_path) -> None:
+    profile = tmp_path / "profile_optional_stop.yaml"
+    profile.write_text(
+        profile_path.read_text(encoding="utf-8").replace("optional_stop_sec: 0.0", "optional_stop_sec: 4.0"),
+        encoding="utf-8",
+    )
+    nc = write_nc(
+        """
+        G21 G90
+        M1
+        G5.1 Q1
+        G01 X10 F1000
+        """
+    )
+    result = estimate_nc_time(nc, profile)
+    assert math.isclose(result.optional_stop_time_sec, 4.0, rel_tol=1e-9)
+    assert result.summary_dict()["smoothing_event_count"] == 1
+    assert not any("Unsupported M-code: M1" in warning for warning in result.warning_list)
+    assert not any("Unsupported G-code: G5" in warning for warning in result.warning_list)

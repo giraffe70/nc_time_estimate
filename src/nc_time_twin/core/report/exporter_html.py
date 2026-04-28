@@ -14,6 +14,12 @@ def export_html(result: EstimateResult, path: str | Path) -> None:
     )
     block_rows = "\n".join(_table_row(row) for row in flattened_rows(result.block_table))
     warning_items = "\n".join(f"<li>{escape(warning)}</li>" for warning in result.warning_list)
+    feed_histogram_rows = "\n".join(_table_row(row) for row in flattened_rows(result.feed_histogram))
+    top_slow_rows = "\n".join(_table_row(row) for row in flattened_rows(result.top_slow_blocks))
+    feed_sanity_summary = [result.feed_sanity_summary] if result.feed_sanity_summary else []
+    feed_sanity_summary_rows = "\n".join(_table_row(row) for row in flattened_rows(feed_sanity_summary))
+    feed_sanity_issue_rows = "\n".join(_table_row(row) for row in flattened_rows(result.feed_sanity_issues))
+    comparison_html = _comparison_html(result)
     html = f"""<!doctype html>
 <html lang="zh-Hant">
 <head>
@@ -33,6 +39,28 @@ def export_html(result: EstimateResult, path: str | Path) -> None:
   <table>{summary_rows}</table>
   <h2>Warnings</h2>
   <ul>{warning_items}</ul>
+  <h2>Feed Histogram</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(result.feed_histogram))}</thead>
+    <tbody>{feed_histogram_rows}</tbody>
+  </table>
+  <h2>Top Slow Feed Blocks</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(result.top_slow_blocks))}</thead>
+    <tbody>{top_slow_rows}</tbody>
+  </table>
+  <h2>Feed Sanity Summary</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(feed_sanity_summary))}</thead>
+    <tbody>{feed_sanity_summary_rows}</tbody>
+  </table>
+  <h2>Feed Sanity Issues</h2>
+  <p>{escape(result.normalized_feed_recommendation)}</p>
+  <table>
+    <thead>{_header_row(flattened_rows(result.feed_sanity_issues))}</thead>
+    <tbody>{feed_sanity_issue_rows}</tbody>
+  </table>
+  {comparison_html}
   <h2>Blocks</h2>
   <table>
     <thead>{_header_row(flattened_rows(result.block_table))}</thead>
@@ -42,6 +70,43 @@ def export_html(result: EstimateResult, path: str | Path) -> None:
 </html>
 """
     Path(path).write_text(html, encoding="utf-8")
+
+
+def _comparison_html(result: EstimateResult) -> str:
+    comparison = result.comparison
+    if not comparison:
+        return ""
+    summary_keys = [
+        "source_label",
+        "candidate_label",
+        "block_count_match",
+        "geometry_match",
+        "is_regression",
+        "max_regression_ratio",
+        "regression_ratio",
+        "total_time_delta_sec",
+        "cutting_time_delta_sec",
+    ]
+    summary = [{key: comparison.get(key) for key in summary_keys}]
+    band_rows = flattened_rows(comparison.get("feed_band_deltas", []))
+    block_rows = flattened_rows(comparison.get("top_time_regression_blocks", []))
+    return f"""
+  <h2>Comparison</h2>
+  <table>
+    <thead>{_header_row(summary)}</thead>
+    <tbody>{"".join(_table_row(row) for row in summary)}</tbody>
+  </table>
+  <h2>Comparison Feed Band Deltas</h2>
+  <table>
+    <thead>{_header_row(band_rows)}</thead>
+    <tbody>{"".join(_table_row(row) for row in band_rows)}</tbody>
+  </table>
+  <h2>Top Time Regression Blocks</h2>
+  <table>
+    <thead>{_header_row(block_rows)}</thead>
+    <tbody>{"".join(_table_row(row) for row in block_rows)}</tbody>
+  </table>
+"""
 
 
 def _header_row(rows: list[dict[str, object]]) -> str:

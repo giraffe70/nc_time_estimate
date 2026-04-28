@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from typing import Any
 
 from nc_time_twin.core.ir.blocks import BaseBlock
 
@@ -10,6 +11,7 @@ class IRProgram(list[BaseBlock]):
 
     def __init__(self, blocks: Iterable[BaseBlock] = ()):
         super().__init__(blocks)
+        self.metadata: dict[str, Any] = {}
         self.link_neighbors()
 
     def link_neighbors(self) -> None:

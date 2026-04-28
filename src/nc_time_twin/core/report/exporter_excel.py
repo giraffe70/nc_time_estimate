@@ -12,30 +12,269 @@ def export_excel(result: EstimateResult, path: str | Path) -> None:
     try:
         import pandas as pd
 
-        summary_df = pd.DataFrame([result.summary_dict()])
+        summary_df = pd.DataFrame(_summary_rows(result))
         blocks_df = pd.DataFrame(flattened_rows(result.block_table))
-        warnings_df = pd.DataFrame({"warning": result.warning_list})
+        diagnostics_df = pd.DataFrame(flattened_rows(_diagnostic_rows(result)))
         with pd.ExcelWriter(Path(path), engine="openpyxl") as writer:
             summary_df.to_excel(writer, sheet_name="summary", index=False)
             blocks_df.to_excel(writer, sheet_name="blocks", index=False)
-            warnings_df.to_excel(writer, sheet_name="warnings", index=False)
+            diagnostics_df.to_excel(writer, sheet_name="diagnostics", index=False)
+            _add_matplotlib_chart_images(writer.book, result)
     except ModuleNotFoundError:
         _export_minimal_xlsx(result, Path(path))
 
 
+def _toolpath_points(toolpath: list[dict[str, object]]) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for segment in toolpath:
+        start = segment.get("start")
+        end = segment.get("end")
+        if not isinstance(start, tuple) or not isinstance(end, tuple):
+            continue
+        rows.append({"x": start[0], "y": start[1], "line_no": segment.get("line_no")})
+        rows.append({"x": end[0], "y": end[1], "line_no": segment.get("line_no")})
+        rows.append({"x": None, "y": None, "line_no": None})
+    return rows
+
+
+def _add_matplotlib_chart_images(workbook, result: EstimateResult) -> bool:
+    try:
+        from io import BytesIO
+
+        from matplotlib.figure import Figure
+        from openpyxl.drawing.image import Image
+    except Exception:
+        return False
+
+    chart_sheet = workbook.create_sheet("charts")
+    figure = Figure(figsize=(10.8, 5.2), dpi=120)
+    path_ax = figure.add_subplot(211)
+    time_ax = figure.add_subplot(212)
+
+    xs: list[float | None] = []
+    ys: list[float | None] = []
+    times: list[float] = []
+    for block in result.ir_program:
+        if block.start is not None and block.end is not None:
+            xs.extend([block.start.x, block.end.x, None])
+            ys.extend([block.start.y, block.end.y, None])
+        times.append(block.estimated_time)
+
+    path_ax.plot(xs, ys, linewidth=1.0)
+    path_ax.set_title("XY Toolpath")
+    path_ax.set_aspect("equal", adjustable="datalim")
+    path_ax.grid(True, linewidth=0.3)
+
+    time_ax.bar(range(len(times)), times)
+    time_ax.set_title("Block Time")
+    time_ax.set_xlabel("Block index")
+    time_ax.set_ylabel("sec")
+    time_ax.grid(True, axis="y", linewidth=0.3)
+    figure.tight_layout()
+
+    image_buffer = BytesIO()
+    figure.savefig(image_buffer, format="png")
+    image_buffer.seek(0)
+    image = Image(image_buffer)
+    chart_sheet.add_image(image, "A1")
+    return True
+
+
 def _export_minimal_xlsx(result: EstimateResult, path: Path) -> None:
-    summary = [list(result.summary_dict().keys()), list(result.summary_dict().values())]
+    summary = _dict_rows_to_matrix(_summary_rows(result))
     blocks = _dict_rows_to_matrix(flattened_rows(result.block_table))
-    warnings = [["warning"], *[[warning] for warning in result.warning_list]]
+    diagnostics = _dict_rows_to_matrix(flattened_rows(_diagnostic_rows(result)))
+    sheets = [
+        ("summary", summary),
+        ("blocks", blocks),
+        ("diagnostics", diagnostics),
+    ]
 
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-        zf.writestr("[Content_Types].xml", _content_types_xml())
+        zf.writestr("[Content_Types].xml", _content_types_xml(len(sheets)))
         zf.writestr("_rels/.rels", _root_rels_xml())
-        zf.writestr("xl/workbook.xml", _workbook_xml())
-        zf.writestr("xl/_rels/workbook.xml.rels", _workbook_rels_xml())
-        zf.writestr("xl/worksheets/sheet1.xml", _sheet_xml(summary))
-        zf.writestr("xl/worksheets/sheet2.xml", _sheet_xml(blocks))
-        zf.writestr("xl/worksheets/sheet3.xml", _sheet_xml(warnings))
+        zf.writestr("xl/workbook.xml", _workbook_xml([name for name, _ in sheets]))
+        zf.writestr("xl/_rels/workbook.xml.rels", _workbook_rels_xml(len(sheets)))
+        for index, (_, rows) in enumerate(sheets, start=1):
+            zf.writestr(f"xl/worksheets/sheet{index}.xml", _sheet_xml(rows))
+
+
+def _diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
+    rows: list[dict[str, object]] = []
+    for index, warning in enumerate(result.warning_list, start=1):
+        rows.append(
+            {
+                "section": "warnings",
+                "item": index,
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": "warning",
+                "value": warning,
+                "message": warning,
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in result.feed_histogram:
+        rows.append(
+            {
+                "section": "feed_histogram",
+                "item": row.get("effective_feed_band_mm_min"),
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": "time_sec",
+                "value": row.get("time_sec"),
+                "message": (
+                    f"band={row.get('effective_feed_band_mm_min')}, "
+                    f"count={row.get('block_count')}, length_mm={row.get('length_mm')}"
+                ),
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in result.top_slow_blocks:
+        rows.append(
+            {
+                "section": "top_slow_blocks",
+                "item": row.get("type"),
+                "line_no": row.get("line_no"),
+                "severity": None,
+                "code": None,
+                "metric": "estimated_time_sec",
+                "value": row.get("estimated_time_sec"),
+                "message": (
+                    f"feed={row.get('feedrate')}, effective_feed_mm_min="
+                    f"{row.get('effective_feed_mm_min')}, length_mm={row.get('length_mm')}"
+                ),
+                "recommendation": None,
+                "raw": row.get("raw"),
+            }
+        )
+    for key, value in result.feed_sanity_summary.items():
+        rows.append(
+            {
+                "section": "feed_sanity_summary",
+                "item": key,
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": key,
+                "value": value,
+                "message": None,
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    if result.normalized_feed_recommendation:
+        rows.append(
+            {
+                "section": "feed_recommendation",
+                "item": "normalized_feed_recommendation",
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": "recommendation",
+                "value": result.normalized_feed_recommendation,
+                "message": result.normalized_feed_recommendation,
+                "recommendation": result.normalized_feed_recommendation,
+                "raw": None,
+            }
+        )
+    for row in result.feed_sanity_issues:
+        rows.append(
+            {
+                "section": "feed_sanity_issues",
+                "item": row.get("sample_lines") or row.get("line_no"),
+                "line_no": row.get("line_no"),
+                "severity": row.get("severity"),
+                "code": row.get("code"),
+                "metric": "effective_feed_mm_min",
+                "value": row.get("effective_feed_mm_min"),
+                "message": row.get("message"),
+                "recommendation": row.get("recommendation"),
+                "raw": row.get("raw"),
+            }
+        )
+    rows.extend(_comparison_diagnostic_rows(result))
+    return rows
+
+
+def _summary_rows(result: EstimateResult) -> list[dict[str, object]]:
+    return [{"metric": key, "value": value} for key, value in result.summary_dict().items()]
+
+
+def _comparison_diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
+    comparison = result.comparison
+    if not comparison:
+        return []
+    rows: list[dict[str, object]] = []
+    summary_keys = [
+        "source_label",
+        "candidate_label",
+        "block_count_match",
+        "geometry_match",
+        "is_regression",
+        "max_regression_ratio",
+        "regression_ratio",
+        "total_time_delta_sec",
+        "cutting_time_delta_sec",
+        "source_total_time_text",
+        "candidate_total_time_text",
+    ]
+    for key in summary_keys:
+        rows.append(
+            {
+                "section": "comparison_summary",
+                "item": key,
+                "line_no": None,
+                "severity": "critical" if key == "is_regression" and comparison.get(key) else None,
+                "code": "time_regression" if key == "is_regression" and comparison.get(key) else None,
+                "metric": key,
+                "value": comparison.get(key),
+                "message": None,
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in comparison.get("feed_band_deltas", []):
+        rows.append(
+            {
+                "section": "comparison_feed_band_deltas",
+                "item": row.get("candidate_effective_feed_band_mm_min"),
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": "delta_time_sec",
+                "value": row.get("delta_time_sec"),
+                "message": (
+                    f"count={row.get('block_count')}, source_time_sec={row.get('source_time_sec')}, "
+                    f"candidate_time_sec={row.get('candidate_time_sec')}"
+                ),
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in comparison.get("top_time_regression_blocks", []):
+        rows.append(
+            {
+                "section": "top_time_regression_blocks",
+                "item": row.get("type"),
+                "line_no": row.get("candidate_line_no"),
+                "severity": "warning" if (row.get("delta_time_sec") or 0) > 0 else None,
+                "code": "time_delta",
+                "metric": "delta_time_sec",
+                "value": row.get("delta_time_sec"),
+                "message": (
+                    f"source_F={row.get('source_feedrate')}, candidate_F={row.get('candidate_feedrate')}, "
+                    f"candidate_effective_feed_mm_min={row.get('candidate_effective_feed_mm_min')}"
+                ),
+                "recommendation": None,
+                "raw": row.get("candidate_raw"),
+            }
+        )
+    return rows
 
 
 def _dict_rows_to_matrix(rows: list[dict[str, object]]) -> list[list[object]]:
@@ -75,15 +314,17 @@ def _column_name(index: int) -> str:
     return name
 
 
-def _content_types_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
+def _content_types_xml(sheet_count: int) -> str:
+    sheet_overrides = "\n".join(
+        f'  <Override PartName="/xl/worksheets/sheet{index}.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>'
+        for index in range(1, sheet_count + 1)
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Types xmlns="http://schemas.openxmlformats.org/package/2006/content-types">
   <Default Extension="rels" ContentType="application/vnd.openxmlformats-package.relationships+xml"/>
   <Default Extension="xml" ContentType="application/xml"/>
   <Override PartName="/xl/workbook.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet.main+xml"/>
-  <Override PartName="/xl/worksheets/sheet1.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/worksheets/sheet2.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
-  <Override PartName="/xl/worksheets/sheet3.xml" ContentType="application/vnd.openxmlformats-officedocument.spreadsheetml.worksheet+xml"/>
+{sheet_overrides}
 </Types>"""
 
 
@@ -94,21 +335,25 @@ def _root_rels_xml() -> str:
 </Relationships>"""
 
 
-def _workbook_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
+def _workbook_xml(sheet_names: list[str]) -> str:
+    sheet_xml = "\n".join(
+        f'    <sheet name="{escape(name)}" sheetId="{index}" r:id="rId{index}"/>'
+        for index, name in enumerate(sheet_names, start=1)
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships">
   <sheets>
-    <sheet name="summary" sheetId="1" r:id="rId1"/>
-    <sheet name="blocks" sheetId="2" r:id="rId2"/>
-    <sheet name="warnings" sheetId="3" r:id="rId3"/>
+{sheet_xml}
   </sheets>
 </workbook>"""
 
 
-def _workbook_rels_xml() -> str:
-    return """<?xml version="1.0" encoding="UTF-8"?>
+def _workbook_rels_xml(sheet_count: int) -> str:
+    rels_xml = "\n".join(
+        f'  <Relationship Id="rId{index}" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet{index}.xml"/>'
+        for index in range(1, sheet_count + 1)
+    )
+    return f"""<?xml version="1.0" encoding="UTF-8"?>
 <Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships">
-  <Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/>
-  <Relationship Id="rId2" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet2.xml"/>
-  <Relationship Id="rId3" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet3.xml"/>
+{rels_xml}
 </Relationships>"""

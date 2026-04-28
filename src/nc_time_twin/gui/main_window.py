@@ -27,6 +27,7 @@ except ModuleNotFoundError as exc:  # pragma: no cover - depends on optional GUI
     raise SystemExit("PySide6 is required for the GUI. Install project requirements first.") from exc
 
 from nc_time_twin.api import estimate_nc_time
+from nc_time_twin.core.report.auto_outputs import AutoOutputPaths, manual_export_path, write_auto_outputs
 from nc_time_twin.core.report.exporters import export_result
 from nc_time_twin.core.report.result_model import EstimateResult
 
@@ -37,6 +38,7 @@ class MainWindow(QMainWindow):
         self.setWindowTitle("NC-Code Machining Time Estimator")
         self.resize(1180, 760)
         self.result: EstimateResult | None = None
+        self.auto_output_paths: AutoOutputPaths | None = None
 
         self.nc_path = QLineEdit()
         self.profile_path = QLineEdit(str(Path("profiles/default_3axis.yaml").resolve()))
@@ -47,16 +49,17 @@ class MainWindow(QMainWindow):
         self.table = QTableWidget()
         self.export_format = QComboBox()
         self.export_format.addItems(["json", "csv", "xlsx", "html"])
+        self.status_label = QLabel("Ready")
         self.chart_container = QWidget()
         self.chart_layout = QVBoxLayout(self.chart_container)
 
-        tabs = QTabWidget()
-        tabs.addTab(self._build_project_tab(), "Project")
-        tabs.addTab(self._build_result_tab(), "Results")
-        tabs.addTab(self._build_table_tab(), "Blocks")
-        tabs.addTab(self._build_chart_tab(), "Charts")
-        tabs.addTab(self.warning_text, "Warnings")
-        self.setCentralWidget(tabs)
+        self.tabs = QTabWidget()
+        self.tabs.addTab(self._build_project_tab(), "Project")
+        self.tabs.addTab(self._build_result_tab(), "Results")
+        self.tabs.addTab(self._build_table_tab(), "Blocks")
+        self.tabs.addTab(self._build_chart_tab(), "Charts")
+        self.tabs.addTab(self.warning_text, "Warnings")
+        self.setCentralWidget(self.tabs)
 
     def _build_project_tab(self) -> QWidget:
         widget = QWidget()
@@ -76,6 +79,7 @@ class MainWindow(QMainWindow):
         estimate_button = QPushButton("Estimate")
         estimate_button.clicked.connect(self._estimate)
         layout.addWidget(estimate_button, 2, 1)
+        layout.addWidget(self.status_label, 2, 2)
 
         export_row = QHBoxLayout()
         export_row.addWidget(QLabel("Export"))
@@ -113,28 +117,47 @@ class MainWindow(QMainWindow):
             self.profile_path.setText(path)
 
     def _estimate(self) -> None:
+        self.status_label.setText("Estimating...")
+        QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
         try:
             self.result = estimate_nc_time(self.nc_path.text(), self.profile_path.text())
         except Exception as exc:  # pragma: no cover - GUI behavior
             QMessageBox.critical(self, "Estimate failed", str(exc))
+            self.status_label.setText("Estimate failed")
+            QApplication.restoreOverrideCursor()
             return
+        finally:
+            if QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
         self._show_summary(self.result)
         self._show_table(self.result)
         self._show_warnings(self.result)
         self._show_charts(self.result)
+        try:
+            self.auto_output_paths = write_auto_outputs(self.result, self.nc_path.text())
+        except Exception as exc:  # pragma: no cover - GUI behavior
+            QMessageBox.warning(self, "Auto output failed", str(exc))
+            self.status_label.setText(f"Done: {self.result.total_time_text}; auto output failed")
+            self.tabs.setCurrentIndex(1)
+            return
+        self.status_label.setText(f"Done: {self.result.total_time_text}")
+        self.statusBar().showMessage(
+            f"Auto report: {self.auto_output_paths.report_path} | Log: {self.auto_output_paths.log_path}"
+        )
+        self.tabs.setCurrentIndex(1)
 
     def _export(self) -> None:
         if self.result is None:
             QMessageBox.information(self, "No result", "Run an estimate first.")
             return
         fmt = self.export_format.currentText()
-        path, _ = QFileDialog.getSaveFileName(self, "Save Report", f"result.{fmt}", f"{fmt.upper()} files (*.{fmt});;All files (*)")
-        if not path:
-            return
+        path = manual_export_path(self.nc_path.text(), fmt)
         try:
             export_result(self.result, path, fmt)
         except Exception as exc:  # pragma: no cover - GUI behavior
             QMessageBox.critical(self, "Export failed", str(exc))
+            return
+        self.statusBar().showMessage(f"Exported: {path}")
 
     def _show_summary(self, result: EstimateResult) -> None:
         lines = [f"{key}: {value}" for key, value in result.summary_dict().items()]

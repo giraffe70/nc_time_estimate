@@ -35,6 +35,7 @@ class EventTimeProfile(BaseModel):
     spindle_stop_sec: float = Field(default=1.0, ge=0)
     coolant_on_sec: float = Field(default=0.5, ge=0)
     coolant_off_sec: float = Field(default=0.5, ge=0)
+    optional_stop_sec: float = Field(default=0.0, ge=0)
 
 
 class CycleProfile(BaseModel):
@@ -53,13 +54,39 @@ class TimeModelProfile(BaseModel):
         return normalized
 
 
+class ReferenceReturnProfile(BaseModel):
+    mode: str = "unestimated"
+    fixed_time_sec: float = Field(default=0.0, ge=0)
+    position: dict[str, float] = Field(default_factory=lambda: {"X": 0.0, "Y": 0.0, "Z": 0.0})
+
+    @field_validator("mode")
+    @classmethod
+    def validate_mode(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"unestimated", "fixed", "rapid"}:
+            raise ValueError("reference return mode must be 'unestimated', 'fixed', or 'rapid'")
+        return normalized
+
+    @field_validator("position")
+    @classmethod
+    def normalize_position(cls, position: dict[str, float]) -> dict[str, float]:
+        normalized = {axis.upper(): value for axis, value in position.items()}
+        for axis in ("X", "Y", "Z"):
+            normalized.setdefault(axis, 0.0)
+        return normalized
+
+    def axis_position(self, name: str) -> float:
+        return self.position[name.upper()]
+
+
 class MachineProfile(BaseModel):
     machine_name: str = "Default 3-Axis CNC"
     controller_name: str = "generic"
     units: str = "mm"
+    feed_unit: str = "mm_per_min"
     axes: dict[str, AxisProfile]
     rapid_feed_mm_min: float = Field(default=12000.0, gt=0)
-    max_cut_feed_mm_min: float = Field(default=6000.0, gt=0)
+    max_cut_feed_mm_min: float = Field(default=10000.0, gt=0)
     default_cut_feed_mm_min: float = Field(default=1000.0, gt=0)
     default_cut_acc_mm_s2: float = Field(default=800.0, gt=0)
     arc_tolerance_mm: float = Field(default=0.01, ge=0)
@@ -67,6 +94,7 @@ class MachineProfile(BaseModel):
     event_time: EventTimeProfile = Field(default_factory=EventTimeProfile)
     cycle: CycleProfile = Field(default_factory=CycleProfile)
     time_model: TimeModelProfile = Field(default_factory=TimeModelProfile)
+    reference_return: ReferenceReturnProfile = Field(default_factory=ReferenceReturnProfile)
 
     @field_validator("units")
     @classmethod
@@ -74,6 +102,14 @@ class MachineProfile(BaseModel):
         normalized = value.lower()
         if normalized not in {"mm", "inch"}:
             raise ValueError("units must be 'mm' or 'inch'")
+        return normalized
+
+    @field_validator("feed_unit")
+    @classmethod
+    def validate_feed_unit(cls, value: str) -> str:
+        normalized = value.lower()
+        if normalized not in {"mm_per_min", "m_per_min", "inverse_time", "auto"}:
+            raise ValueError("feed_unit must be 'mm_per_min', 'm_per_min', 'inverse_time', or 'auto'")
         return normalized
 
     @field_validator("axes")

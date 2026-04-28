@@ -1,0 +1,3 @@
+[console_scripts]
+nc-time-twin = nc_time_twin.cli:main
+nc-time-twin-gui = nc_time_twin.gui.main_window:main

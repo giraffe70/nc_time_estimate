@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from pathlib import Path
+import shutil
 import uuid
 
 import pytest
@@ -13,6 +14,17 @@ PROFILE = ROOT / "profiles" / "default_3axis.yaml"
 @pytest.fixture
 def profile_path() -> Path:
     return PROFILE
+
+
+@pytest.fixture
+def tmp_path() -> Path:
+    path = ROOT / f".test_tmp_{uuid.uuid4().hex}"
+    path.mkdir(parents=False, exist_ok=False)
+    try:
+        yield path
+    finally:
+        if path.parent == ROOT and path.name.startswith(".test_tmp_"):
+            shutil.rmtree(path, ignore_errors=True)
 
 
 @pytest.fixture

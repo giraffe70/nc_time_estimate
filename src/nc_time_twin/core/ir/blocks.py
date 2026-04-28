@@ -50,6 +50,9 @@ class LinearMoveBlock(BaseBlock):
     feed_mode: str = "G94"
     spindle_speed: float | None = None
     unit: str = "mm"
+    feed_unit: str | None = None
+    effective_feed_mm_min: float | None = None
+    feed_capped: bool = False
     block_type: ClassVar[str] = "linear"
 
 
@@ -63,6 +66,9 @@ class ArcMoveBlock(BaseBlock):
     feed_mode: str = "G94"
     spindle_speed: float | None = None
     unit: str = "mm"
+    feed_unit: str | None = None
+    effective_feed_mm_min: float | None = None
+    feed_capped: bool = False
     block_type: ClassVar[str] = "arc"
 
 
@@ -89,6 +95,24 @@ class SpindleEventBlock(BaseBlock):
 class CoolantEventBlock(BaseBlock):
     event: str = "coolant_on"
     block_type: ClassVar[str] = "coolant_event"
+
+
+@dataclass
+class OptionalStopBlock(BaseBlock):
+    block_type: ClassVar[str] = "optional_stop"
+
+
+@dataclass
+class ReferenceReturnBlock(BaseBlock):
+    code: str = "G28"
+    axes: tuple[str, ...] = ()
+    block_type: ClassVar[str] = "reference_return"
+
+
+@dataclass
+class SmoothingEventBlock(BaseBlock):
+    code: str = "G5"
+    block_type: ClassVar[str] = "smoothing_event"
 
 
 @dataclass
