@@ -81,6 +81,16 @@ def block_to_row(block: BaseBlock) -> dict[str, Any]:
     else:
         row["reference_code"] = None
         row["reference_axes"] = None
+    row["phase2_entry_velocity_mm_s"] = block.phase2_entry_velocity_mm_s
+    row["phase2_exit_velocity_mm_s"] = block.phase2_exit_velocity_mm_s
+    row["phase2_peak_velocity_mm_s"] = block.phase2_peak_velocity_mm_s
+    row["phase2_v_cap_mm_s"] = block.phase2_v_cap_mm_s
+    row["phase2_a_cap_mm_s2"] = block.phase2_a_cap_mm_s2
+    row["phase2_j_cap_mm_s3"] = block.phase2_j_cap_mm_s3
+    row["phase2_profile_type"] = block.phase2_profile_type
+    row["phase2_slowdown_ratio"] = block.phase2_slowdown_ratio
+    row["phase2_bottleneck_reason"] = block.phase2_bottleneck_reason
+    row["phase2_segment_count"] = block.phase2_segment_count
     return row
 
 
@@ -115,6 +125,10 @@ class EstimateResult:
     feed_sanity_issues: list[dict[str, Any]] = field(default_factory=list)
     normalized_feed_recommendation: str = ""
     comparison: dict[str, Any] = field(default_factory=dict)
+    phase2_summary: dict[str, Any] = field(default_factory=dict)
+    phase2_junctions: list[dict[str, Any]] = field(default_factory=list)
+    phase2_bottlenecks: list[dict[str, Any]] = field(default_factory=list)
+    phase2_dynamic_samples: list[dict[str, Any]] = field(default_factory=list)
 
     def summary_dict(self) -> dict[str, Any]:
         summary = {
@@ -140,6 +154,7 @@ class EstimateResult:
         }
         summary.update(self.feed_summary)
         summary.update(self.feed_sanity_summary)
+        summary.update(self.phase2_summary)
         summary["warning_count"] = len(self.warning_list)
         return summary
 
@@ -154,6 +169,8 @@ class EstimateResult:
             "feed_sanity_issues": self.feed_sanity_issues,
             "normalized_feed_recommendation": self.normalized_feed_recommendation,
             "comparison": self.comparison,
+            "phase2_junctions": self.phase2_junctions,
+            "phase2_bottlenecks": self.phase2_bottlenecks,
             "charts": self.chart_data(),
         }
 
@@ -181,6 +198,8 @@ class EstimateResult:
         return {
             "xy_toolpath": toolpath,
             "block_times": block_times,
+            "phase2_dynamic_samples": self.phase2_dynamic_samples,
+            "phase2_junctions": self.phase2_junctions,
         }
 
 
@@ -229,6 +248,7 @@ def summarize_result(ir_program: list[BaseBlock]) -> EstimateResult:
         + result.dwell_time_sec
     )
     result.feed_summary = _feed_summary(ir_program)
+    _attach_phase2_metadata(result, ir_program)
     result.total_time_text = format_seconds(result.total_time_sec)
     result.block_table = [block_to_row(block) for block in ir_program]
     result.feed_histogram = _feed_histogram(ir_program)
@@ -273,6 +293,25 @@ def _feed_summary(ir_program: list[BaseBlock]) -> dict[str, Any]:
         "feed_min_effective_mm_min": min(effective_feeds) if effective_feeds else None,
         "feed_max_effective_mm_min": max(effective_feeds) if effective_feeds else None,
     }
+
+
+def _attach_phase2_metadata(result: EstimateResult, ir_program: list[BaseBlock]) -> None:
+    metadata = getattr(ir_program, "metadata", {})
+    phase2 = metadata.get("phase2") if isinstance(metadata, dict) else None
+    if not isinstance(phase2, dict) or not phase2.get("enabled"):
+        return
+    summary = phase2.get("summary")
+    if isinstance(summary, dict):
+        result.phase2_summary = summary
+    junctions = phase2.get("junctions")
+    if isinstance(junctions, list):
+        result.phase2_junctions = junctions
+    bottlenecks = phase2.get("bottlenecks")
+    if isinstance(bottlenecks, list):
+        result.phase2_bottlenecks = bottlenecks
+    dynamic_samples = phase2.get("dynamic_samples")
+    if isinstance(dynamic_samples, list):
+        result.phase2_dynamic_samples = dynamic_samples
 
 
 def _feed_histogram(ir_program: list[BaseBlock]) -> list[dict[str, Any]]:

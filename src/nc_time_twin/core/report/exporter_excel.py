@@ -15,10 +15,13 @@ def export_excel(result: EstimateResult, path: str | Path) -> None:
         summary_df = pd.DataFrame(_summary_rows(result))
         blocks_df = pd.DataFrame(flattened_rows(result.block_table))
         diagnostics_df = pd.DataFrame(flattened_rows(_diagnostic_rows(result)))
+        phase2_dynamic_df = pd.DataFrame(flattened_rows(result.phase2_dynamic_samples))
         with pd.ExcelWriter(Path(path), engine="openpyxl") as writer:
             summary_df.to_excel(writer, sheet_name="summary", index=False)
             blocks_df.to_excel(writer, sheet_name="blocks", index=False)
             diagnostics_df.to_excel(writer, sheet_name="diagnostics", index=False)
+            if not phase2_dynamic_df.empty:
+                phase2_dynamic_df.to_excel(writer, sheet_name="phase2_dynamic", index=False)
             _add_matplotlib_chart_images(writer.book, result)
     except ModuleNotFoundError:
         _export_minimal_xlsx(result, Path(path))
@@ -47,9 +50,15 @@ def _add_matplotlib_chart_images(workbook, result: EstimateResult) -> bool:
         return False
 
     chart_sheet = workbook.create_sheet("charts")
-    figure = Figure(figsize=(10.8, 5.2), dpi=120)
-    path_ax = figure.add_subplot(211)
-    time_ax = figure.add_subplot(212)
+    has_phase2 = bool(result.phase2_dynamic_samples)
+    figure = Figure(figsize=(10.8, 7.0 if has_phase2 else 5.2), dpi=120)
+    if has_phase2:
+        path_ax = figure.add_subplot(311)
+        time_ax = figure.add_subplot(312)
+        velocity_ax = figure.add_subplot(313)
+    else:
+        path_ax = figure.add_subplot(211)
+        time_ax = figure.add_subplot(212)
 
     xs: list[float | None] = []
     ys: list[float | None] = []
@@ -70,6 +79,16 @@ def _add_matplotlib_chart_images(workbook, result: EstimateResult) -> bool:
     time_ax.set_xlabel("Block index")
     time_ax.set_ylabel("sec")
     time_ax.grid(True, axis="y", linewidth=0.3)
+    if has_phase2:
+        velocity_ax.plot(
+            [sample["time_sec"] for sample in result.phase2_dynamic_samples],
+            [sample["velocity_mm_s"] for sample in result.phase2_dynamic_samples],
+            linewidth=0.8,
+        )
+        velocity_ax.set_title("Phase 2 Velocity")
+        velocity_ax.set_xlabel("sec")
+        velocity_ax.set_ylabel("mm/s")
+        velocity_ax.grid(True, linewidth=0.3)
     figure.tight_layout()
 
     image_buffer = BytesIO()
@@ -84,11 +103,14 @@ def _export_minimal_xlsx(result: EstimateResult, path: Path) -> None:
     summary = _dict_rows_to_matrix(_summary_rows(result))
     blocks = _dict_rows_to_matrix(flattened_rows(result.block_table))
     diagnostics = _dict_rows_to_matrix(flattened_rows(_diagnostic_rows(result)))
+    phase2_dynamic = _dict_rows_to_matrix(flattened_rows(result.phase2_dynamic_samples))
     sheets = [
         ("summary", summary),
         ("blocks", blocks),
         ("diagnostics", diagnostics),
     ]
+    if result.phase2_dynamic_samples:
+        sheets.append(("phase2_dynamic", phase2_dynamic))
 
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
         zf.writestr("[Content_Types].xml", _content_types_xml(len(sheets)))
@@ -194,6 +216,51 @@ def _diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
                 "value": row.get("effective_feed_mm_min"),
                 "message": row.get("message"),
                 "recommendation": row.get("recommendation"),
+                "raw": row.get("raw"),
+            }
+        )
+    for key, value in result.phase2_summary.items():
+        rows.append(
+            {
+                "section": "phase2_summary",
+                "item": key,
+                "line_no": None,
+                "severity": None,
+                "code": None,
+                "metric": key,
+                "value": value,
+                "message": None,
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in result.phase2_junctions:
+        rows.append(
+            {
+                "section": "phase2_junctions",
+                "item": row.get("index"),
+                "line_no": None,
+                "severity": None,
+                "code": row.get("reason"),
+                "metric": "v_junction_limit_mm_s",
+                "value": row.get("v_junction_limit_mm_s"),
+                "message": f"angle_deg={row.get('angle_deg')}, tolerance_mm={row.get('tolerance_mm')}",
+                "recommendation": None,
+                "raw": None,
+            }
+        )
+    for row in result.phase2_bottlenecks:
+        rows.append(
+            {
+                "section": "phase2_bottlenecks",
+                "item": row.get("segment_id"),
+                "line_no": row.get("line_no"),
+                "severity": "warning",
+                "code": "phase2_bottleneck",
+                "metric": "slowdown_ratio",
+                "value": row.get("slowdown_ratio"),
+                "message": row.get("reason"),
+                "recommendation": None,
                 "raw": row.get("raw"),
             }
         )

@@ -8,7 +8,12 @@ import zipfile
 
 from nc_time_twin import estimate_nc_time
 from nc_time_twin.cli import main
-from nc_time_twin.core.report.auto_outputs import manual_export_path, write_auto_outputs
+from nc_time_twin.core.report.auto_outputs import (
+    manual_export_path,
+    manual_export_path_in_dir,
+    write_auto_log,
+    write_auto_outputs,
+)
 from nc_time_twin.core.report.exporters import export_result
 
 
@@ -234,6 +239,23 @@ def test_auto_outputs_include_report_chart_data_and_log(write_nc, profile_path, 
     assert "Warnings:" in paths.log_path.read_text(encoding="utf-8")
 
 
+def test_auto_log_does_not_write_report(write_nc, profile_path, tmp_path) -> None:
+    nc = write_nc("G21 G90\nG01 X100 F1000")
+    result = estimate_nc_time(nc, profile_path)
+
+    log_path = write_auto_log(
+        result,
+        nc,
+        base_dir=tmp_path,
+        now=datetime(2026, 4, 27, 16, 25),
+    )
+
+    assert log_path == tmp_path / "logs" / f"{nc.stem}_20260427_1625.log"
+    assert log_path.exists()
+    assert "Summary:" in log_path.read_text(encoding="utf-8")
+    assert not (tmp_path / "output").exists()
+
+
 def test_manual_export_path_uses_output_directory_and_nc_filename(write_nc, tmp_path) -> None:
     nc = write_nc("G21 G90\nG01 X100 F1000")
     path = manual_export_path(
@@ -243,6 +265,24 @@ def test_manual_export_path_uses_output_directory_and_nc_filename(write_nc, tmp_
         now=datetime(2026, 4, 27, 16, 25),
     )
     assert path == tmp_path / "output" / f"{nc.stem}_20260427_1625.json"
+
+
+def test_manual_export_path_in_dir_allows_multiple_formats(write_nc, profile_path, tmp_path) -> None:
+    nc = write_nc("G21 G90\nG01 X100 F1000")
+    result = estimate_nc_time(nc, profile_path)
+    output_dir = tmp_path / "chosen_reports"
+
+    for fmt in ("json", "csv", "xlsx", "html"):
+        path = manual_export_path_in_dir(
+            nc,
+            fmt,
+            output_dir,
+            now=datetime(2026, 4, 27, 16, 25),
+        )
+        export_result(result, path, fmt)
+        assert path == output_dir / f"{nc.stem}_20260427_1625.{fmt}"
+        assert path.exists()
+        assert path.stat().st_size > 0
 
 
 def _xlsx_sheet_names(path) -> list[str]:

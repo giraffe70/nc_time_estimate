@@ -7,6 +7,9 @@ import sys
 
 from nc_time_twin.api import estimate_nc_time, estimate_nc_time_with_comparison
 from nc_time_twin.core.feed_normalizer import normalize_feed_file
+from nc_time_twin.core.machine.benchmark_generator import generate_benchmark_nc_code
+from nc_time_twin.core.machine.calibration import calibrate_machine_profile_from_csv
+from nc_time_twin.core.machine.profile import load_machine_profile
 from nc_time_twin.core.report.auto_outputs import write_auto_outputs
 from nc_time_twin.core.report.exporters import export_result
 
@@ -23,6 +26,12 @@ def main(argv: list[str] | None = None) -> int:
         "--feed-unit",
         choices=["auto", "mm_per_min", "m_per_min", "inverse_time"],
         help="Override the profile feed_unit for this run",
+    )
+    estimate_parser.add_argument(
+        "--time-model",
+        choices=["profile", "constant_velocity", "trapezoid", "phase2"],
+        default="profile",
+        help="Override profile time_model.mode; default uses the profile value",
     )
     estimate_parser.add_argument("--compare-nc", help="Baseline/source NC-Code path for candidate comparison")
     estimate_parser.add_argument(
@@ -65,26 +74,53 @@ def main(argv: list[str] | None = None) -> int:
     )
     normalize_parser.add_argument("--print-summary", action="store_true", help="Print normalization summary JSON")
 
+    benchmark_parser = subparsers.add_parser("generate-benchmark", help="Generate Phase 2 benchmark NC-Code")
+    benchmark_parser.add_argument("--profile", required=True, help="Path to machine profile YAML")
+    benchmark_parser.add_argument("--out", required=True, help="Output NC-Code path")
+    benchmark_parser.add_argument("--print-summary", action="store_true", help="Print generation summary JSON")
+
+    calibrate_parser = subparsers.add_parser("calibrate-profile", help="Calibrate a Phase 2 profile from CSV data")
+    calibrate_parser.add_argument("--dataset", required=True, help="CSV with case_id,nc_file,actual_total_time_sec")
+    calibrate_parser.add_argument("--profile", required=True, help="Base machine profile YAML")
+    calibrate_parser.add_argument("--out", required=True, help="Output calibrated profile YAML")
+    calibrate_parser.add_argument(
+        "--nc-base-dir",
+        help="Base directory for relative nc_file values in the dataset; defaults to dataset directory",
+    )
+    calibrate_parser.add_argument("--print-summary", action="store_true", help="Print calibration summary JSON")
+
     args = parser.parse_args(argv)
     if args.command == "estimate":
         return _estimate(args)
     if args.command == "normalize-feed":
         return _normalize_feed(args)
+    if args.command == "generate-benchmark":
+        return _generate_benchmark(args)
+    if args.command == "calibrate-profile":
+        return _calibrate_profile(args)
     return 2
 
 
 def _estimate(args: argparse.Namespace) -> int:
+    time_model = None if args.time_model == "profile" else args.time_model
     if args.compare_nc:
         result = estimate_nc_time_with_comparison(
             args.nc,
             args.compare_nc,
             args.profile,
             feed_unit=args.feed_unit,
+            time_model=time_model,
             strict_feed=args.strict_feed,
             max_regression_ratio=args.max_regression_ratio,
         )
     else:
-        result = estimate_nc_time(args.nc, args.profile, feed_unit=args.feed_unit, strict_feed=args.strict_feed)
+        result = estimate_nc_time(
+            args.nc,
+            args.profile,
+            feed_unit=args.feed_unit,
+            time_model=time_model,
+            strict_feed=args.strict_feed,
+        )
     if args.out:
         out_path = Path(args.out)
         out_path.parent.mkdir(parents=True, exist_ok=True)
@@ -116,6 +152,47 @@ def _normalize_feed(args: argparse.Namespace) -> int:
     print(f"Wrote normalized NC-Code: {Path(args.out).resolve()}", file=sys.stderr)
     if args.print_summary:
         json.dump(summary.to_dict(), sys.stdout, ensure_ascii=False, indent=2)
+        sys.stdout.write("\n")
+    return 0
+
+
+def _generate_benchmark(args: argparse.Namespace) -> int:
+    profile = load_machine_profile(args.profile)
+    nc_code = generate_benchmark_nc_code(profile)
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    out_path.write_text(nc_code, encoding="utf-8")
+    print(f"Wrote benchmark NC-Code: {out_path.resolve()}", file=sys.stderr)
+    if args.print_summary:
+        json.dump(
+            {
+                "output_path": str(out_path),
+                "machine_name": profile.machine_name,
+                "line_count": len(nc_code.splitlines()),
+            },
+            sys.stdout,
+            ensure_ascii=False,
+            indent=2,
+        )
+        sys.stdout.write("\n")
+    return 0
+
+
+def _calibrate_profile(args: argparse.Namespace) -> int:
+    calibrated_profile, summary = calibrate_machine_profile_from_csv(
+        args.dataset,
+        args.profile,
+        nc_base_dir=args.nc_base_dir,
+    )
+    out_path = Path(args.out)
+    out_path.parent.mkdir(parents=True, exist_ok=True)
+    import yaml
+
+    with out_path.open("w", encoding="utf-8") as fh:
+        yaml.safe_dump(calibrated_profile.model_dump(mode="json"), fh, allow_unicode=True, sort_keys=False)
+    print(f"Wrote calibrated profile: {out_path.resolve()}", file=sys.stderr)
+    if args.print_summary:
+        json.dump(summary, sys.stdout, ensure_ascii=False, indent=2)
         sys.stdout.write("\n")
     return 0
 

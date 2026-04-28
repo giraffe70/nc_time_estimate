@@ -1,0 +1,76 @@
+NC-Time-Twin Estimate Log
+NC-Code: C:\Projects\綠智能\nc_time_twin_v2\.test_program_be706736df67441c812c65fb278958ae.nc
+Generated at: 2026-04-28 12:17:18
+
+Summary:
+  total_time_sec: 6.081649658092773
+  total_time_text: 00:00:06
+  rapid_time_sec: 0.0
+  cutting_time_sec: 6.081649658092773
+  arc_time_sec: 0.0
+  dwell_time_sec: 0.0
+  tool_change_time_sec: 0.0
+  spindle_time_sec: 0.0
+  coolant_time_sec: 0.0
+  optional_stop_time_sec: 0.0
+  reference_return_time_sec: 0.0
+  auxiliary_time_sec: 0.0
+  total_length_mm: 100.0
+  tool_change_count: 0
+  spindle_event_count: 0
+  coolant_event_count: 0
+  optional_stop_count: 0
+  reference_return_count: 0
+  smoothing_event_count: 0
+  feed_unit_configured: auto
+  feed_unit_effective: mm_per_min
+  feed_move_count: 1
+  feed_raw_count: 1
+  feed_min_raw: 1000.0
+  feed_max_raw: 1000.0
+  feed_low_g94_count: 0
+  feed_capped_count: 0
+  feed_min_effective_mm_min: 1000.0
+  feed_max_effective_mm_min: 1000.0
+  feed_sanity_issue_count: 0
+  feed_sanity_critical_count: 0
+  feed_sanity_warning_count: 0
+  feed_sanity_low_effective_count: 0
+  feed_sanity_low_raw_g94_count: 0
+  feed_sanity_mid_raw_g94_count: 0
+  feed_sanity_extreme_raw_count: 0
+  feed_sanity_extreme_raw_threshold: 50000.0
+  feed_sanity_strict_feed: False
+  phase2_segment_count: 1
+  phase2_junction_count: 0
+  phase2_bottleneck_count: 0
+  phase2_dynamic_sample_count: 1002
+  warning_count: 0
+
+Warnings:
+  None
+
+Feed Histogram:
+  - <1000: count=0, time_sec=0, length_mm=0
+  - 1000-2999: count=1, time_sec=6.08165, length_mm=100
+  - 3000-4499: count=0, time_sec=0, length_mm=0
+  - 4500-5999: count=0, time_sec=0, length_mm=0
+  - >=6000: count=0, time_sec=0, length_mm=0
+
+Top Slow Feed Blocks:
+  - Line 2: time_sec=6.08165, length_mm=100, raw_F=1000.0, effective_feed_mm_min=1000.0, raw=G01 X100 F1000
+
+Feed Sanity Summary:
+  feed_sanity_issue_count: 0
+  feed_sanity_critical_count: 0
+  feed_sanity_warning_count: 0
+  feed_sanity_low_effective_count: 0
+  feed_sanity_low_raw_g94_count: 0
+  feed_sanity_mid_raw_g94_count: 0
+  feed_sanity_extreme_raw_count: 0
+  feed_sanity_extreme_raw_threshold: 50000.0
+  feed_sanity_strict_feed: False
+  normalized_feed_recommendation: No feed normalization action is required by the current sanity rules.
+
+Feed Sanity Issues:
+  None

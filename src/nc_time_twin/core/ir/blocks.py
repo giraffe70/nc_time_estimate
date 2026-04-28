@@ -23,6 +23,17 @@ class BaseBlock:
     length: float = 0.0
     estimated_time: float = 0.0
     warnings: list[str] = field(default_factory=list)
+    phase2_entry_velocity_mm_s: float | None = None
+    phase2_exit_velocity_mm_s: float | None = None
+    phase2_peak_velocity_mm_s: float | None = None
+    phase2_v_cap_mm_s: float | None = None
+    phase2_a_cap_mm_s2: float | None = None
+    phase2_j_cap_mm_s3: float | None = None
+    phase2_profile_type: str | None = None
+    phase2_slowdown_ratio: float | None = None
+    phase2_bottleneck_reason: str | None = None
+    phase2_segment_count: int = 0
+    phase2_dynamic_samples: list[dict[str, float | int | str]] = field(default_factory=list)
     prev: BaseBlock | None = field(default=None, repr=False, compare=False)
     next: BaseBlock | None = field(default=None, repr=False, compare=False)
 

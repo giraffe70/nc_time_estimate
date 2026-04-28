@@ -11,6 +11,8 @@ src/nc_time_twin.egg-info/entry_points.txt
 src/nc_time_twin.egg-info/requires.txt
 src/nc_time_twin.egg-info/top_level.txt
 src/nc_time_twin/core/__init__.py
+src/nc_time_twin/core/feed_normalizer.py
+src/nc_time_twin/core/feed_sanity.py
 src/nc_time_twin/core/geometry/__init__.py
 src/nc_time_twin/core/geometry/arc.py
 src/nc_time_twin/core/geometry/line.py
@@ -19,6 +21,8 @@ src/nc_time_twin/core/ir/__init__.py
 src/nc_time_twin/core/ir/blocks.py
 src/nc_time_twin/core/ir/program.py
 src/nc_time_twin/core/machine/__init__.py
+src/nc_time_twin/core/machine/benchmark_generator.py
+src/nc_time_twin/core/machine/calibration.py
 src/nc_time_twin/core/machine/profile.py
 src/nc_time_twin/core/parser/__init__.py
 src/nc_time_twin/core/parser/macro.py
@@ -27,6 +31,7 @@ src/nc_time_twin/core/parser/nc_parser.py
 src/nc_time_twin/core/parser/preprocess.py
 src/nc_time_twin/core/parser/tokenizer.py
 src/nc_time_twin/core/report/__init__.py
+src/nc_time_twin/core/report/auto_outputs.py
 src/nc_time_twin/core/report/exporter_common.py
 src/nc_time_twin/core/report/exporter_csv.py
 src/nc_time_twin/core/report/exporter_excel.py
@@ -35,9 +40,12 @@ src/nc_time_twin/core/report/exporter_json.py
 src/nc_time_twin/core/report/exporters.py
 src/nc_time_twin/core/report/result_model.py
 src/nc_time_twin/core/simulation/__init__.py
+src/nc_time_twin/core/simulation/phase2.py
 src/nc_time_twin/core/simulation/time_estimator.py
 src/nc_time_twin/gui/__init__.py
 src/nc_time_twin/gui/main_window.py
 tests/test_cycles_reports_cli.py
 tests/test_geometry_time.py
+tests/test_gui_source_contract.py
 tests/test_parser.py
+tests/test_phase2.py

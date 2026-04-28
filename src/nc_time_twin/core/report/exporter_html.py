@@ -19,6 +19,11 @@ def export_html(result: EstimateResult, path: str | Path) -> None:
     feed_sanity_summary = [result.feed_sanity_summary] if result.feed_sanity_summary else []
     feed_sanity_summary_rows = "\n".join(_table_row(row) for row in flattened_rows(feed_sanity_summary))
     feed_sanity_issue_rows = "\n".join(_table_row(row) for row in flattened_rows(result.feed_sanity_issues))
+    phase2_summary = [result.phase2_summary] if result.phase2_summary else []
+    phase2_summary_rows = "\n".join(_table_row(row) for row in flattened_rows(phase2_summary))
+    phase2_junction_rows = "\n".join(_table_row(row) for row in flattened_rows(result.phase2_junctions))
+    phase2_bottleneck_rows = "\n".join(_table_row(row) for row in flattened_rows(result.phase2_bottlenecks))
+    phase2_dynamic_rows = "\n".join(_table_row(row) for row in flattened_rows(result.phase2_dynamic_samples))
     comparison_html = _comparison_html(result)
     html = f"""<!doctype html>
 <html lang="zh-Hant">
@@ -59,6 +64,26 @@ def export_html(result: EstimateResult, path: str | Path) -> None:
   <table>
     <thead>{_header_row(flattened_rows(result.feed_sanity_issues))}</thead>
     <tbody>{feed_sanity_issue_rows}</tbody>
+  </table>
+  <h2>Phase 2 Summary</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(phase2_summary))}</thead>
+    <tbody>{phase2_summary_rows}</tbody>
+  </table>
+  <h2>Phase 2 Junctions</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(result.phase2_junctions))}</thead>
+    <tbody>{phase2_junction_rows}</tbody>
+  </table>
+  <h2>Phase 2 Bottlenecks</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(result.phase2_bottlenecks))}</thead>
+    <tbody>{phase2_bottleneck_rows}</tbody>
+  </table>
+  <h2>Phase 2 Dynamic Samples</h2>
+  <table>
+    <thead>{_header_row(flattened_rows(result.phase2_dynamic_samples))}</thead>
+    <tbody>{phase2_dynamic_rows}</tbody>
   </table>
   {comparison_html}
   <h2>Blocks</h2>

@@ -40,10 +40,34 @@ python -m nc_time_twin estimate --nc examples/basic.nc --profile profiles/defaul
 python -m nc_time_twin estimate --nc examples/ToolPathSource.opti.nc --compare-nc examples/ToolPathSource.nc --profile profiles/default_3axis.yaml --fail-on-regression --out output/compare.xlsx
 ```
 
+啟用第二階段三軸虛擬控制器：
+
+```powershell
+python -m nc_time_twin estimate --nc examples/basic.nc --profile profiles/default_phase2_3axis.yaml --out output/basic_phase2.xlsx
+```
+
+或在既有 profile 上用 CLI 覆寫時間模型：
+
+```powershell
+python -m nc_time_twin estimate --nc examples/basic.nc --profile profiles/default_3axis.yaml --time-model phase2 --out output/basic_phase2.xlsx
+```
+
 正規化 G21/G94 進給值：
 
 ```powershell
 python -m nc_time_twin normalize-feed --nc input.nc --profile profiles/default_3axis.yaml --input-feed-unit m_per_min --out output/input.normalized.nc
+```
+
+產生第二階段機台校正用 benchmark NC：
+
+```powershell
+python -m nc_time_twin generate-benchmark --profile profiles/default_phase2_3axis.yaml --out output/phase2_benchmark.nc
+```
+
+用實測 CSV 校正 Phase 2 profile：
+
+```powershell
+python -m nc_time_twin calibrate-profile --dataset output/calibration.csv --profile profiles/default_phase2_3axis.yaml --out profiles/my_machine_phase2.yaml --print-summary
 ```
 
 ## GUI 使用

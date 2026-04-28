@@ -1,0 +1,134 @@
+NC-Time-Twin Estimate Log
+NC-Code: C:\Projects\綠智能\nc_time_twin_v2\examples\ToolPathSource.nc
+Generated at: 2026-04-28 12:22:28
+
+Summary:
+  total_time_sec: 564.2596452917967
+  total_time_text: 00:09:24
+  rapid_time_sec: 82.09261199639653
+  cutting_time_sec: 470.667033295399
+  arc_time_sec: 408.6868853651814
+  dwell_time_sec: 0.0
+  tool_change_time_sec: 0.0
+  spindle_time_sec: 11.0
+  coolant_time_sec: 0.5
+  optional_stop_time_sec: 0.0
+  reference_return_time_sec: 0.0
+  auxiliary_time_sec: 11.5
+  total_length_mm: 40759.300990299475
+  tool_change_count: 0
+  spindle_event_count: 6
+  coolant_event_count: 1
+  optional_stop_count: 0
+  reference_return_count: 1
+  smoothing_event_count: 0
+  feed_unit_configured: auto
+  feed_unit_effective: mm_per_min
+  feed_move_count: 2053
+  feed_raw_count: 2053
+  feed_min_raw: 4500.0
+  feed_max_raw: 10000.0
+  feed_low_g94_count: 0
+  feed_capped_count: 0
+  feed_min_effective_mm_min: 4500.0
+  feed_max_effective_mm_min: 10000.0
+  feed_sanity_issue_count: 0
+  feed_sanity_critical_count: 0
+  feed_sanity_warning_count: 0
+  feed_sanity_low_effective_count: 0
+  feed_sanity_low_raw_g94_count: 0
+  feed_sanity_mid_raw_g94_count: 0
+  feed_sanity_extreme_raw_count: 0
+  feed_sanity_extreme_raw_threshold: 50000.0
+  feed_sanity_strict_feed: True
+  phase2_segment_count: 9067
+  phase2_junction_count: 9062
+  phase2_bottleneck_count: 7515
+  phase2_dynamic_sample_count: 285459
+  warning_count: 1
+
+Warnings:
+  - Line 2142: G28 reference return time is not estimated
+
+Feed Histogram:
+  - <1000: count=0, time_sec=0, length_mm=0
+  - 1000-2999: count=0, time_sec=0, length_mm=0
+  - 3000-4499: count=0, time_sec=0, length_mm=0
+  - 4500-5999: count=32, time_sec=22.8596, length_mm=1099.62
+  - >=6000: count=2021, time_sec=447.807, length_mm=32674.1
+
+Top Slow Feed Blocks:
+  - Line 1392: time_sec=3.16326, length_mm=368.597, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=G02 X1.581 Y290.874 I277.334 J-88.729
+  - Line 2130: time_sec=2.15718, length_mm=236.256, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=G02 X-61.292 Y279.686 I247.266 J-144.996
+  - Line 1504: time_sec=2.01575, length_mm=209.984, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-231.169 Y143.940 I65.403 J-264.269
+  - Line 1524: time_sec=1.97542, length_mm=203.892, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-227.562 Y143.881 I66.528 J-260.897
+  - Line 1548: time_sec=1.94283, length_mm=200.361, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-225.392 Y143.751 I67.062 J-258.778
+  - Line 1564: time_sec=1.92381, length_mm=197.414, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-223.411 Y143.411 I67.359 J-256.800
+  - Line 1595: time_sec=1.89611, length_mm=194.638, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-221.498 Y143.031 I67.579 J-254.849
+  - Line 1615: time_sec=1.87847, length_mm=191.915, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-219.616 Y142.659 I67.777 J-252.893
+  - Line 1635: time_sec=1.86149, length_mm=189.262, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-217.792 Y142.296 I68.029 J-251.104
+  - Line 1659: time_sec=1.84484, length_mm=186.651, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-215.991 Y141.940 I68.240 J-249.272
+  - Line 1679: time_sec=1.81826, length_mm=184.097, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-214.228 Y141.589 I68.461 J-247.497
+  - Line 1699: time_sec=1.80253, length_mm=181.606, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-212.507 Y141.249 I68.627 J-245.700
+  - Line 1718: time_sec=1.79033, length_mm=179.675, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-211.188 Y141.005 I68.808 J-244.378
+  - Line 1757: time_sec=1.76143, length_mm=176.78, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-209.276 Y140.727 I69.168 J-242.521
+  - Line 1776: time_sec=1.75285, length_mm=175.409, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-208.391 Y140.621 I69.343 J-241.645
+  - Line 1796: time_sec=1.74427, length_mm=174.037, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-207.504 Y140.517 I69.517 J-240.770
+  - Line 1816: time_sec=1.73575, length_mm=172.669, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-206.618 Y140.411 I69.690 J-239.895
+  - Line 1835: time_sec=1.7272, length_mm=171.3, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-205.731 Y140.304 I69.863 J-239.018
+  - Line 1855: time_sec=1.70763, length_mm=169.927, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-204.842 Y140.199 I70.037 J-238.141
+  - Line 1876: time_sec=1.69913, length_mm=168.557, raw_F=7500.0, effective_feed_mm_min=7500.0, raw=X-203.954 Y140.091 I70.210 J-237.262
+
+Feed Sanity Summary:
+  feed_sanity_issue_count: 0
+  feed_sanity_critical_count: 0
+  feed_sanity_warning_count: 0
+  feed_sanity_low_effective_count: 0
+  feed_sanity_low_raw_g94_count: 0
+  feed_sanity_mid_raw_g94_count: 0
+  feed_sanity_extreme_raw_count: 0
+  feed_sanity_extreme_raw_threshold: 50000.0
+  feed_sanity_strict_feed: True
+  normalized_feed_recommendation: No feed normalization action is required by the current sanity rules.
+
+Feed Sanity Issues:
+  None
+
+Comparison:
+  source: C:\Projects\綠智能\nc_time_twin_v2\examples\ToolPathSource.opti.nc
+  candidate: C:\Projects\綠智能\nc_time_twin_v2\examples\ToolPathSource.nc
+  geometry_match: True
+  total_time_delta_sec: -57.053398011398144
+  cutting_time_delta_sec: -57.040957458177274
+  regression_ratio: -0.09182713710318267
+  max_regression_ratio: 0.0
+  is_regression: False
+
+Comparison Feed Band Deltas:
+  - <1000: count=0, delta_time_sec=0
+  - 1000-2999: count=0, delta_time_sec=0
+  - 3000-4499: count=0, delta_time_sec=0
+  - 4500-5999: count=32, delta_time_sec=-3.96905e-15
+  - >=6000: count=2021, delta_time_sec=-57.041
+
+Top Time Regression Blocks:
+  - Candidate line 230: delta_time_sec=0.0960234, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X-39.161 Y182.803 I2543.998 J-144.870
+  - Candidate line 619: delta_time_sec=0.0664734, source_F=9315.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X37.605 Y197.137 I-588.455 J26.930
+  - Candidate line 664: delta_time_sec=0.0661977, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X37.442 Y199.041 I-565.034 J16.102
+  - Candidate line 232: delta_time_sec=0.0444289, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G02 X-39.961 Y154.055 I-7146.852 J186.083
+  - Candidate line 233: delta_time_sec=0.0357974, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X-40.521 Y129.116 I3887.378 J-99.862
+  - Candidate line 663: delta_time_sec=0.0289966, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X37.495 Y165.074 I-670.718 J45.194
+  - Candidate line 665: delta_time_sec=0.0238328, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X36.962 Y212.139 I-1302.056 J-41.171
+  - Candidate line 621: delta_time_sec=0.0227549, source_F=9315.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X35.582 Y243.385 I-2665.023 J-108.473
+  - Candidate line 620: delta_time_sec=0.019598, source_F=9315.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X37.166 Y209.702 I-1082.035 J-31.458
+  - Candidate line 666: delta_time_sec=0.0134115, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X35.518 Y242.614 I-2698.711 J-112.524
+  - Candidate line 231: delta_time_sec=0.0130893, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G01 X-39.348 Y176.261
+  - Candidate line 618: delta_time_sec=0.0101109, source_F=9315.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X37.237 Y153.088 I-833.397 J74.843
+  - Candidate line 234: delta_time_sec=0.00352488, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G01 X-40.827 Y113.135
+  - Candidate line 661: delta_time_sec=0.00210709, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X36.231 Y139.504 I-762.152 J79.681
+  - Candidate line 662: delta_time_sec=0.000433652, source_F=15344492.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G01 X36.284 Y140.303
+  - Candidate line 1201: delta_time_sec=1.19349e-15, source_F=4120.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G02 X-6.434 Y45.214 I-38.136 J-41.446
+  - Candidate line 1220: delta_time_sec=9.99201e-16, source_F=2983.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X-11.237 Y56.822 I-4.708 J-0.938 F7500
+  - Candidate line 1354: delta_time_sec=9.4369e-16, source_F=3167.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X-17.409 Y102.569 I3.851 J-2.865 F7500
+  - Candidate line 1238: delta_time_sec=8.88178e-16, source_F=3043.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=G03 X-13.002 Y53.550 I-4.651 J-1.186 F7500
+  - Candidate line 1285: delta_time_sec=7.91034e-16, source_F=5142.0, candidate_F=7500.0, candidate_effective_feed_mm_min=7500.0, raw=X3.218 Y45.505 I1.606 J10.050

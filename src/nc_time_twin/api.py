@@ -15,13 +15,14 @@ def estimate_nc_time(
     machine_profile_path: str | Path,
     *,
     feed_unit: str | None = None,
+    time_model: str | None = None,
     strict_feed: bool = False,
 ) -> EstimateResult:
     machine_profile = load_machine_profile(machine_profile_path)
     if strict_feed and feed_unit is None:
         feed_unit = "mm_per_min"
-    if feed_unit is not None:
-        machine_profile = _profile_with_feed_unit(machine_profile, feed_unit)
+    if feed_unit is not None or time_model is not None:
+        machine_profile = _profile_with_overrides(machine_profile, feed_unit=feed_unit, time_model=time_model)
     ir_program = parse_nc_file(nc_file_path, machine_profile)
     compute_program_geometry(ir_program, machine_profile)
     estimate_program_time(ir_program, machine_profile)
@@ -37,6 +38,7 @@ def estimate_nc_time_with_comparison(
     machine_profile_path: str | Path,
     *,
     feed_unit: str | None = None,
+    time_model: str | None = None,
     strict_feed: bool = False,
     max_regression_ratio: float = 0.0,
 ) -> EstimateResult:
@@ -44,12 +46,14 @@ def estimate_nc_time_with_comparison(
         source_nc_file_path,
         machine_profile_path,
         feed_unit=feed_unit,
+        time_model=time_model,
         strict_feed=strict_feed,
     )
     candidate = estimate_nc_time(
         nc_file_path,
         machine_profile_path,
         feed_unit=feed_unit,
+        time_model=time_model,
         strict_feed=strict_feed,
     )
     candidate.comparison = compare_estimate_results(
@@ -62,9 +66,17 @@ def estimate_nc_time_with_comparison(
     return candidate
 
 
-def _profile_with_feed_unit(machine_profile: MachineProfile, feed_unit: str) -> MachineProfile:
+def _profile_with_overrides(
+    machine_profile: MachineProfile,
+    *,
+    feed_unit: str | None = None,
+    time_model: str | None = None,
+) -> MachineProfile:
     data = machine_profile.model_dump()
-    data["feed_unit"] = feed_unit
+    if feed_unit is not None:
+        data["feed_unit"] = feed_unit
+    if time_model is not None:
+        data.setdefault("time_model", {})["mode"] = time_model
     return MachineProfile.model_validate(data)
 
 

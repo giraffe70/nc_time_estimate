@@ -39,6 +39,23 @@ def write_auto_outputs(
     return AutoOutputPaths(report_path=report_path, log_path=log_path)
 
 
+def write_auto_log(
+    result: EstimateResult,
+    nc_file_path: str | Path,
+    *,
+    base_dir: str | Path = ".",
+    now: datetime | None = None,
+) -> Path:
+    root = Path(base_dir)
+    log_dir = root / "logs"
+    log_dir.mkdir(parents=True, exist_ok=True)
+
+    filename = _output_filename(nc_file_path, now or datetime.now())
+    log_path = log_dir / f"{filename}.log"
+    _write_log(result, nc_file_path, log_path)
+    return log_path
+
+
 def manual_export_path(
     nc_file_path: str | Path,
     export_format: str,
@@ -50,6 +67,19 @@ def manual_export_path(
     output_dir.mkdir(parents=True, exist_ok=True)
     filename = _output_filename(nc_file_path, now or datetime.now())
     return output_dir / f"{filename}.{_report_suffix(export_format)}"
+
+
+def manual_export_path_in_dir(
+    nc_file_path: str | Path,
+    export_format: str,
+    output_dir: str | Path,
+    *,
+    now: datetime | None = None,
+) -> Path:
+    target_dir = Path(output_dir)
+    target_dir.mkdir(parents=True, exist_ok=True)
+    filename = _output_filename(nc_file_path, now or datetime.now())
+    return target_dir / f"{filename}.{_report_suffix(export_format)}"
 
 
 def _output_filename(nc_file_path: str | Path, timestamp: datetime) -> str:

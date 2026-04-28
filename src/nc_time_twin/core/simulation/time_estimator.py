@@ -84,8 +84,18 @@ def estimate_program_time(program: list[BaseBlock], machine_profile: MachineProf
         configured_feed_unit=machine_profile.feed_unit,
         effective_feed_unit=effective_feed_unit,
     )
-    for block in program:
-        estimate_block_time(block, machine_profile, effective_feed_unit=effective_feed_unit, stats=stats)
+    if machine_profile.time_model.mode == "phase2":
+        from nc_time_twin.core.simulation.phase2 import estimate_program_time_phase2
+
+        estimate_program_time_phase2(
+            program,
+            machine_profile,
+            effective_feed_unit=effective_feed_unit,
+            stats=stats,
+        )
+    else:
+        for block in program:
+            estimate_block_time(block, machine_profile, effective_feed_unit=effective_feed_unit, stats=stats)
     _attach_feed_diagnostics(program, machine_profile, stats)
 
 
