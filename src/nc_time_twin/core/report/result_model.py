@@ -364,85 +364,16 @@ def compare_estimate_results(
     max_regression_ratio: float = 0.0,
     limit: int = 20,
 ) -> dict[str, Any]:
-    block_count_match = len(source.block_table) == len(candidate.block_table)
-    geometry_match = _geometry_matches(source.block_table, candidate.block_table) if block_count_match else False
-    delta_rows = _comparison_delta_rows(source.block_table, candidate.block_table)
-    top_delta_rows = sorted(delta_rows, key=lambda row: row["delta_time_sec"], reverse=True)[:limit]
-    band_rows = _comparison_band_rows(delta_rows)
-    total_delta = candidate.total_time_sec - source.total_time_sec
-    cutting_delta = candidate.cutting_time_sec - source.cutting_time_sec
-    regression_ratio = total_delta / source.total_time_sec if source.total_time_sec > 0 else 0.0
-    is_regression = geometry_match and regression_ratio > max_regression_ratio
-    return {
-        "source_label": source_label,
-        "candidate_label": candidate_label,
-        "block_count_match": block_count_match,
-        "geometry_match": geometry_match,
-        "is_regression": is_regression,
-        "max_regression_ratio": max_regression_ratio,
-        "regression_ratio": regression_ratio,
-        "total_time_delta_sec": total_delta,
-        "cutting_time_delta_sec": cutting_delta,
-        "source_total_time_sec": source.total_time_sec,
-        "candidate_total_time_sec": candidate.total_time_sec,
-        "source_total_time_text": source.total_time_text,
-        "candidate_total_time_text": candidate.total_time_text,
-        "feed_band_deltas": band_rows,
-        "top_time_regression_blocks": top_delta_rows,
-    }
+    from nc_time_twin.core.report.comparison import compare_estimate_results as _compare_estimate_results
 
-
-def _comparison_delta_rows(
-    source_rows: list[dict[str, Any]],
-    candidate_rows: list[dict[str, Any]],
-) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for source_row, candidate_row in zip(source_rows, candidate_rows, strict=False):
-        if source_row.get("type") not in {"linear", "arc"} or candidate_row.get("type") not in {"linear", "arc"}:
-            continue
-        delta = (candidate_row.get("estimated_time_sec") or 0.0) - (
-            source_row.get("estimated_time_sec") or 0.0
-        )
-        rows.append(
-            {
-                "source_line_no": source_row.get("line_no"),
-                "candidate_line_no": candidate_row.get("line_no"),
-                "type": candidate_row.get("type"),
-                "length_mm": candidate_row.get("length_mm"),
-                "source_time_sec": source_row.get("estimated_time_sec"),
-                "candidate_time_sec": candidate_row.get("estimated_time_sec"),
-                "delta_time_sec": delta,
-                "source_feedrate": source_row.get("feedrate"),
-                "candidate_feedrate": candidate_row.get("feedrate"),
-                "source_effective_feed_mm_min": source_row.get("effective_feed_mm_min"),
-                "candidate_effective_feed_mm_min": candidate_row.get("effective_feed_mm_min"),
-                "candidate_feed_unit": candidate_row.get("feed_unit"),
-                "candidate_raw": candidate_row.get("raw"),
-            }
-        )
-    return rows
-
-
-def _comparison_band_rows(delta_rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
-    rows: list[dict[str, Any]] = []
-    for label, low, high in FEED_HISTOGRAM_BANDS:
-        band = [
-            row
-            for row in delta_rows
-            if row.get("candidate_effective_feed_mm_min") is not None
-            and _value_in_band(float(row["candidate_effective_feed_mm_min"]), low, high)
-        ]
-        rows.append(
-            {
-                "candidate_effective_feed_band_mm_min": label,
-                "block_count": len(band),
-                "length_mm": sum(float(row.get("length_mm") or 0.0) for row in band),
-                "source_time_sec": sum(float(row.get("source_time_sec") or 0.0) for row in band),
-                "candidate_time_sec": sum(float(row.get("candidate_time_sec") or 0.0) for row in band),
-                "delta_time_sec": sum(float(row.get("delta_time_sec") or 0.0) for row in band),
-            }
-        )
-    return rows
+    return _compare_estimate_results(
+        source,
+        candidate,
+        source_label=source_label,
+        candidate_label=candidate_label,
+        max_regression_ratio=max_regression_ratio,
+        limit=limit,
+    )
 
 
 def _feed_blocks(ir_program: list[BaseBlock]) -> list[LinearMoveBlock | ArcMoveBlock]:

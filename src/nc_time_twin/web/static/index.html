@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>NC-Time-Twin</title>
+  <link rel="stylesheet" href="/static/styles.css">
+</head>
+<body>
+  <main class="app">
+    <header class="topbar">
+      <div>
+        <h1>NC-Time-Twin</h1>
+        <p>NC-Code machining time estimation, comparison, and reporting</p>
+      </div>
+      <div class="status" id="status">Ready</div>
+    </header>
+
+    <nav class="tabs" aria-label="main tabs">
+      <button class="tab active" type="button" data-tab="estimate">Estimate</button>
+      <button class="tab" type="button" data-tab="compare">Compare</button>
+      <button class="tab" type="button" data-tab="blocks">Blocks</button>
+      <button class="tab" type="button" data-tab="charts">Charts</button>
+    </nav>
+
+    <section id="tab-estimate" class="tab-panel active">
+      <form id="estimate-form" class="panel" enctype="multipart/form-data">
+        <div class="form-grid">
+          <label>
+            <span>NC-Code</span>
+            <input name="nc_file" type="file" accept=".nc,.tap,.gcode,.txt" required>
+          </label>
+          <label>
+            <span>Machine Profile</span>
+            <input id="estimate-profile-file" name="profile" type="file" accept=".yaml,.yml">
+          </label>
+          <div class="button-cell">
+            <button type="button" id="load-profile-button" class="secondary">Load Profile</button>
+          </div>
+          <label>
+            <span>Time Model</span>
+            <select name="time_model">
+              <option value="constant_velocity">Constant Velocity</option>
+              <option value="trapezoid">Trapezoid</option>
+              <option value="phase2">Phase 2</option>
+            </select>
+          </label>
+          <label>
+            <span>Feed Unit</span>
+            <select name="feed_unit">
+              <option value="auto" selected>auto</option>
+              <option value="mm_per_min">mm_per_min</option>
+              <option value="m_per_min">m_per_min</option>
+              <option value="inverse_time">inverse_time</option>
+            </select>
+          </label>
+          <label class="check-row">
+            <input name="strict_feed" type="checkbox" value="true">
+            <span>Strict G21/G94 feed validation</span>
+          </label>
+          <label class="check-row">
+            <input id="estimate-sanity-warning" type="checkbox">
+            <span>Show Feed sanity warning</span>
+          </label>
+        </div>
+
+        <details class="profile-editor" open>
+          <summary>Machine Profile parameters</summary>
+          <div class="profile-grid" id="profile-editor">
+            <label><span>Machine Name</span><input data-profile-key="machine_name"></label>
+            <label><span>Controller Name</span><input data-profile-key="controller_name"></label>
+            <label><span>Kinematic Type</span><input data-profile-key="kinematic_type"></label>
+            <label><span>Units</span><select data-profile-key="units"><option>mm</option><option>inch</option></select></label>
+            <label><span>Feed Unit</span><select data-profile-key="feed_unit"><option>auto</option><option>mm_per_min</option><option>m_per_min</option><option>inverse_time</option></select></label>
+            <label><span>Rapid Feed (mm/min)</span><input type="number" step="0.001" data-profile-key="rapid_feed_mm_min"></label>
+            <label><span>Max Cut Feed (mm/min)</span><input type="number" step="0.001" data-profile-key="max_cut_feed_mm_min"></label>
+            <label><span>Default Cut Feed (mm/min)</span><input type="number" step="0.001" data-profile-key="default_cut_feed_mm_min"></label>
+            <label><span>Default Cut Acc (mm/s^2)</span><input type="number" step="0.001" data-profile-key="default_cut_acc_mm_s2"></label>
+            <label><span>Default Cut Jerk (mm/s^3)</span><input type="number" step="0.001" data-profile-key="default_cut_jerk_mm_s3"></label>
+            <label><span>Arc Tolerance (mm)</span><input type="number" step="0.000001" data-profile-key="arc_tolerance_mm"></label>
+            <label><span>Arc Chord Tolerance (mm)</span><input type="number" step="0.000001" data-profile-key="arc_chord_tolerance_mm"></label>
+          </div>
+
+          <details class="profile-subgrid">
+            <summary>Axes</summary>
+            <div class="axis-grid">
+              <label><span>X Rapid Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.X.rapid_velocity_mm_min"></label>
+              <label><span>X Max Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.X.max_velocity_mm_min"></label>
+              <label><span>X Max Acc (mm/s^2)</span><input type="number" step="0.001" data-profile-key="axes.X.max_acc_mm_s2"></label>
+              <label><span>X Max Jerk (mm/s^3)</span><input type="number" step="0.001" data-profile-key="axes.X.max_jerk_mm_s3"></label>
+              <label><span>Y Rapid Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.Y.rapid_velocity_mm_min"></label>
+              <label><span>Y Max Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.Y.max_velocity_mm_min"></label>
+              <label><span>Y Max Acc (mm/s^2)</span><input type="number" step="0.001" data-profile-key="axes.Y.max_acc_mm_s2"></label>
+              <label><span>Y Max Jerk (mm/s^3)</span><input type="number" step="0.001" data-profile-key="axes.Y.max_jerk_mm_s3"></label>
+              <label><span>Z Rapid Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.Z.rapid_velocity_mm_min"></label>
+              <label><span>Z Max Velocity (mm/min)</span><input type="number" step="0.001" data-profile-key="axes.Z.max_velocity_mm_min"></label>
+              <label><span>Z Max Acc (mm/s^2)</span><input type="number" step="0.001" data-profile-key="axes.Z.max_acc_mm_s2"></label>
+              <label><span>Z Max Jerk (mm/s^3)</span><input type="number" step="0.001" data-profile-key="axes.Z.max_jerk_mm_s3"></label>
+            </div>
+          </details>
+
+          <details class="profile-subgrid">
+            <summary>Controller / Events</summary>
+            <div class="profile-grid">
+              <label><span>Interpolation Period (ms)</span><input type="number" step="0.001" data-profile-key="controller.interpolation_period_ms"></label>
+              <label><span>Lookahead Blocks</span><input type="number" step="1" data-profile-key="controller.lookahead_blocks"></label>
+              <label><span>Junction Tolerance (mm)</span><input type="number" step="0.000001" data-profile-key="controller.junction_tolerance_mm"></label>
+              <label><span>Same Direction Angle (deg)</span><input type="number" step="0.001" data-profile-key="controller.same_direction_angle_threshold_deg"></label>
+              <label><span>Reverse Angle (deg)</span><input type="number" step="0.001" data-profile-key="controller.reverse_angle_threshold_deg"></label>
+              <label><span>Lookahead Max Iterations</span><input type="number" step="1" data-profile-key="controller.lookahead_max_iterations"></label>
+              <label><span>Velocity Tolerance (mm/s)</span><input type="number" step="0.000001" data-profile-key="controller.velocity_tolerance_mm_s"></label>
+              <label><span>Phase2 Max Samples/Block</span><input type="number" step="1" data-profile-key="controller.phase2_max_samples_per_block"></label>
+              <label><span>Dwell P Unit</span><select data-profile-key="controller.dwell_p_unit"><option>ms</option><option>sec</option></select></label>
+              <label><span>Dwell X Unit</span><select data-profile-key="controller.dwell_x_unit"><option>sec</option><option>ms</option></select></label>
+              <label><span>Tool Change (sec)</span><input type="number" step="0.001" data-profile-key="event_time.tool_change_sec"></label>
+              <label><span>Spindle Start (sec)</span><input type="number" step="0.001" data-profile-key="event_time.spindle_start_sec"></label>
+              <label><span>Spindle Stop (sec)</span><input type="number" step="0.001" data-profile-key="event_time.spindle_stop_sec"></label>
+              <label><span>Coolant On (sec)</span><input type="number" step="0.001" data-profile-key="event_time.coolant_on_sec"></label>
+              <label><span>Coolant Off (sec)</span><input type="number" step="0.001" data-profile-key="event_time.coolant_off_sec"></label>
+              <label><span>Optional Stop (sec)</span><input type="number" step="0.001" data-profile-key="event_time.optional_stop_sec"></label>
+            </div>
+          </details>
+
+          <details class="profile-subgrid">
+            <summary>Cycle / Reference Return</summary>
+            <div class="profile-grid">
+              <label><span>G83 Peck Clearance (mm)</span><input type="number" step="0.001" data-profile-key="cycle.peck_clearance_mm"></label>
+              <label><span>Time Model Mode</span><select data-profile-key="time_model.mode"><option>constant_velocity</option><option>trapezoid</option><option>phase2</option></select></label>
+              <label><span>Reference Mode</span><select data-profile-key="reference_return.mode"><option>unestimated</option><option>fixed</option><option>rapid</option></select></label>
+              <label><span>Reference Fixed (sec)</span><input type="number" step="0.001" data-profile-key="reference_return.fixed_time_sec"></label>
+              <label><span>Reference X</span><input type="number" step="0.001" data-profile-key="reference_return.position.X"></label>
+              <label><span>Reference Y</span><input type="number" step="0.001" data-profile-key="reference_return.position.Y"></label>
+              <label><span>Reference Z</span><input type="number" step="0.001" data-profile-key="reference_return.position.Z"></label>
+            </div>
+          </details>
+        </details>
+
+        <div class="action-row">
+          <div class="button-group">
+            <button type="submit" id="estimate-button">Estimate</button>
+            <button type="button" id="estimate-stop-button" class="danger" disabled>Stop</button>
+          </div>
+          <div id="estimate-downloads" class="downloads" hidden></div>
+        </div>
+      </form>
+
+      <section class="result-grid">
+        <div class="panel">
+          <h2>Estimate Summary</h2>
+          <pre id="estimate-summary"></pre>
+        </div>
+        <div class="panel wide">
+          <h2>Warnings</h2>
+          <pre id="estimate-warnings"></pre>
+        </div>
+      </section>
+    </section>
+
+    <section id="tab-compare" class="tab-panel">
+      <form id="compare-form" class="panel" enctype="multipart/form-data">
+        <div class="form-grid">
+          <label><span>Original NC</span><input name="original_nc" type="file" accept=".nc,.tap,.gcode,.txt" required></label>
+          <label><span>Optimized NC</span><input name="optimized_nc" type="file" accept=".nc,.tap,.gcode,.txt" required></label>
+          <label><span>Time Model</span><select name="time_model"><option value="profile">Profile</option><option value="constant_velocity">Constant Velocity</option><option value="trapezoid">Trapezoid</option><option value="phase2">Phase 2</option></select></label>
+          <label><span>Feed Unit</span><select name="feed_unit"><option value="">Profile</option><option value="auto">auto</option><option value="mm_per_min">mm_per_min</option><option value="m_per_min">m_per_min</option><option value="inverse_time">inverse_time</option></select></label>
+          <label><span>Max Regression Ratio</span><input name="max_regression_ratio" type="number" value="0.0002" step="0.0001" min="0"></label>
+          <label class="check-row"><input name="strict_feed" type="checkbox" value="true"><span>Strict feed validation</span></label>
+        </div>
+        <div class="action-row">
+          <button type="submit" id="compare-button">Compare</button>
+          <div id="compare-downloads" class="downloads" hidden></div>
+        </div>
+      </form>
+
+      <div class="metric-grid" id="compare-metrics"></div>
+      <div class="panel">
+        <div class="section-head">
+          <h2>Segment Differences</h2>
+          <div class="filters">
+            <label><input type="checkbox" id="filter-slower" checked> Slower only</label>
+            <label><input type="checkbox" id="filter-low-speed"> Low speed anomaly</label>
+            <label><input type="checkbox" id="filter-unit"> Unit suspect</label>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>line_no</th><th>Original F</th><th>Optimized F</th><th>Original effective feed</th><th>Optimized effective feed</th>
+                <th>Original time</th><th>Optimized time</th><th>Delta time</th><th>Low speed</th><th>Unit suspect</th><th>match</th>
+              </tr>
+            </thead>
+            <tbody id="segments-body"></tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
+    <section id="tab-blocks" class="tab-panel">
+      <div class="panel">
+        <h2>Blocks</h2>
+        <div class="table-wrap"><table id="blocks-table"></table></div>
+      </div>
+    </section>
+
+    <section id="tab-charts" class="tab-panel">
+      <div class="chart-grid">
+        <div class="panel"><h2>XYZ Toolpath</h2><canvas id="toolpath-chart" width="720" height="420"></canvas></div>
+        <div class="panel"><h2>Block Time</h2><canvas id="blocktime-chart" width="720" height="420"></canvas></div>
+        <div class="panel wide"><h2>Phase 2 Velocity</h2><canvas id="velocity-chart" width="1080" height="320"></canvas></div>
+      </div>
+    </section>
+  </main>
+  <script src="/static/app.js"></script>
+</body>
+</html>

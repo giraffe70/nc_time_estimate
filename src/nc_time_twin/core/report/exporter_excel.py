@@ -2,29 +2,43 @@ from __future__ import annotations
 
 from html import escape
 from pathlib import Path
+import shutil
+import tempfile
 import zipfile
+import xml.etree.ElementTree as ET
 
+from nc_time_twin.core.report.comparison import comparison_segment_report_rows
 from nc_time_twin.core.report.exporter_common import flattened_rows
 from nc_time_twin.core.report.result_model import EstimateResult
 
 
+MAX_EXCEL_PHASE2_DYNAMIC_ROWS = 100_000
+MAX_CHART_PHASE2_DYNAMIC_POINTS = 20_000
+
+
 def export_excel(result: EstimateResult, path: str | Path) -> None:
+    target_path = Path(path)
     try:
         import pandas as pd
 
+        phase2_dynamic_rows = _downsample_rows(result.phase2_dynamic_samples, MAX_EXCEL_PHASE2_DYNAMIC_ROWS)
         summary_df = pd.DataFrame(_summary_rows(result))
         blocks_df = pd.DataFrame(flattened_rows(result.block_table))
-        diagnostics_df = pd.DataFrame(flattened_rows(_diagnostic_rows(result)))
-        phase2_dynamic_df = pd.DataFrame(flattened_rows(result.phase2_dynamic_samples))
-        with pd.ExcelWriter(Path(path), engine="openpyxl") as writer:
+        diagnostics_df = pd.DataFrame(flattened_rows(_diagnostic_rows(result, phase2_dynamic_rows)))
+        comparison_segments_df = pd.DataFrame(flattened_rows(comparison_segment_report_rows(result.comparison)))
+        phase2_dynamic_df = pd.DataFrame(flattened_rows(phase2_dynamic_rows))
+        with pd.ExcelWriter(target_path, engine="openpyxl") as writer:
             summary_df.to_excel(writer, sheet_name="summary", index=False)
             blocks_df.to_excel(writer, sheet_name="blocks", index=False)
             diagnostics_df.to_excel(writer, sheet_name="diagnostics", index=False)
+            if not comparison_segments_df.empty:
+                comparison_segments_df.to_excel(writer, sheet_name="comparison_segments", index=False)
             if not phase2_dynamic_df.empty:
                 phase2_dynamic_df.to_excel(writer, sheet_name="phase2_dynamic", index=False)
             _add_matplotlib_chart_images(writer.book, result)
+        _normalize_relationship_targets(target_path)
     except ModuleNotFoundError:
-        _export_minimal_xlsx(result, Path(path))
+        _export_minimal_xlsx(result, target_path)
 
 
 def _toolpath_points(toolpath: list[dict[str, object]]) -> list[dict[str, object]]:
@@ -80,9 +94,10 @@ def _add_matplotlib_chart_images(workbook, result: EstimateResult) -> bool:
     time_ax.set_ylabel("sec")
     time_ax.grid(True, axis="y", linewidth=0.3)
     if has_phase2:
+        chart_samples = _downsample_rows(result.phase2_dynamic_samples, MAX_CHART_PHASE2_DYNAMIC_POINTS)
         velocity_ax.plot(
-            [sample["time_sec"] for sample in result.phase2_dynamic_samples],
-            [sample["velocity_mm_s"] for sample in result.phase2_dynamic_samples],
+            [sample["time_sec"] for sample in chart_samples],
+            [sample["velocity_mm_s"] for sample in chart_samples],
             linewidth=0.8,
         )
         velocity_ax.set_title("Phase 2 Velocity")
@@ -100,16 +115,20 @@ def _add_matplotlib_chart_images(workbook, result: EstimateResult) -> bool:
 
 
 def _export_minimal_xlsx(result: EstimateResult, path: Path) -> None:
+    phase2_dynamic_rows = _downsample_rows(result.phase2_dynamic_samples, MAX_EXCEL_PHASE2_DYNAMIC_ROWS)
     summary = _dict_rows_to_matrix(_summary_rows(result))
     blocks = _dict_rows_to_matrix(flattened_rows(result.block_table))
-    diagnostics = _dict_rows_to_matrix(flattened_rows(_diagnostic_rows(result)))
-    phase2_dynamic = _dict_rows_to_matrix(flattened_rows(result.phase2_dynamic_samples))
+    diagnostics = _dict_rows_to_matrix(flattened_rows(_diagnostic_rows(result, phase2_dynamic_rows)))
+    comparison_segments = _dict_rows_to_matrix(flattened_rows(comparison_segment_report_rows(result.comparison)))
+    phase2_dynamic = _dict_rows_to_matrix(flattened_rows(phase2_dynamic_rows))
     sheets = [
         ("summary", summary),
         ("blocks", blocks),
         ("diagnostics", diagnostics),
     ]
-    if result.phase2_dynamic_samples:
+    if result.comparison.get("segment_differences"):
+        sheets.append(("comparison_segments", comparison_segments))
+    if phase2_dynamic_rows:
         sheets.append(("phase2_dynamic", phase2_dynamic))
 
     with zipfile.ZipFile(path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
@@ -121,7 +140,10 @@ def _export_minimal_xlsx(result: EstimateResult, path: Path) -> None:
             zf.writestr(f"xl/worksheets/sheet{index}.xml", _sheet_xml(rows))
 
 
-def _diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
+def _diagnostic_rows(
+    result: EstimateResult,
+    phase2_dynamic_rows: list[dict[str, object]] | None = None,
+) -> list[dict[str, object]]:
     rows: list[dict[str, object]] = []
     for index, warning in enumerate(result.warning_list, start=1):
         rows.append(
@@ -234,6 +256,28 @@ def _diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
                 "raw": None,
             }
         )
+    if result.phase2_dynamic_samples:
+        exported_count = len(phase2_dynamic_rows) if phase2_dynamic_rows is not None else len(result.phase2_dynamic_samples)
+        rows.append(
+            {
+                "section": "phase2_dynamic_export",
+                "item": "sample_count",
+                "line_no": None,
+                "severity": "warning" if exported_count < len(result.phase2_dynamic_samples) else None,
+                "code": "phase2_dynamic_downsampled" if exported_count < len(result.phase2_dynamic_samples) else None,
+                "metric": "exported_samples",
+                "value": exported_count,
+                "message": (
+                    f"original_samples={len(result.phase2_dynamic_samples)}, "
+                    f"exported_samples={exported_count}, "
+                    f"excel_limit={MAX_EXCEL_PHASE2_DYNAMIC_ROWS}"
+                ),
+                "recommendation": "Use JSON export for full Phase 2 dynamic samples."
+                if exported_count < len(result.phase2_dynamic_samples)
+                else None,
+                "raw": None,
+            }
+        )
     for row in result.phase2_junctions:
         rows.append(
             {
@@ -266,6 +310,75 @@ def _diagnostic_rows(result: EstimateResult) -> list[dict[str, object]]:
         )
     rows.extend(_comparison_diagnostic_rows(result))
     return rows
+
+
+def _downsample_rows(rows: list[dict[str, object]], limit: int) -> list[dict[str, object]]:
+    if limit <= 0 or len(rows) <= limit:
+        return rows
+    if limit == 1:
+        return [rows[0]]
+    step = (len(rows) - 1) / (limit - 1)
+    indexes = [round(index * step) for index in range(limit)]
+    indexes[0] = 0
+    indexes[-1] = len(rows) - 1
+    return [rows[index] for index in indexes]
+
+
+def _normalize_relationship_targets(path: Path) -> None:
+    if not path.exists() or not zipfile.is_zipfile(path):
+        return
+
+    temp_handle = tempfile.NamedTemporaryFile(delete=False, suffix=".xlsx")
+    temp_path = Path(temp_handle.name)
+    temp_handle.close()
+    try:
+        with zipfile.ZipFile(path, "r") as source, zipfile.ZipFile(
+            temp_path,
+            "w",
+            compression=zipfile.ZIP_DEFLATED,
+        ) as target:
+            for info in source.infolist():
+                data = source.read(info.filename)
+                if info.filename.endswith(".rels"):
+                    data = _normalize_rels_xml(info.filename, data)
+                target.writestr(info, data)
+        shutil.move(str(temp_path), path)
+    finally:
+        try:
+            temp_path.unlink()
+        except FileNotFoundError:
+            pass
+
+
+def _normalize_rels_xml(filename: str, data: bytes) -> bytes:
+    try:
+        root = ET.fromstring(data)
+    except ET.ParseError:
+        return data
+    namespace = {"rel": "http://schemas.openxmlformats.org/package/2006/relationships"}
+    changed = False
+    for relationship in root.findall("rel:Relationship", namespace):
+        target = relationship.attrib.get("Target", "")
+        normalized = _relative_relationship_target(filename, target)
+        if normalized != target:
+            relationship.set("Target", normalized)
+            changed = True
+    if not changed:
+        return data
+    ET.register_namespace("", "http://schemas.openxmlformats.org/package/2006/relationships")
+    return ET.tostring(root, encoding="utf-8", xml_declaration=False)
+
+
+def _relative_relationship_target(rels_filename: str, target: str) -> str:
+    if not target.startswith("/xl/"):
+        return target
+    if rels_filename == "xl/_rels/workbook.xml.rels":
+        return target.removeprefix("/xl/")
+    if rels_filename.startswith("xl/worksheets/_rels/"):
+        return "../" + target.removeprefix("/xl/")
+    if rels_filename.startswith("xl/drawings/_rels/"):
+        return "../" + target.removeprefix("/xl/drawings/../").removeprefix("/xl/")
+    return target.removeprefix("/")
 
 
 def _summary_rows(result: EstimateResult) -> list[dict[str, object]]:

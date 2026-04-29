@@ -6,8 +6,9 @@ from datetime import datetime
 import xml.etree.ElementTree as ET
 import zipfile
 
-from nc_time_twin import estimate_nc_time
+from nc_time_twin import estimate_nc_time, estimate_nc_time_with_comparison
 from nc_time_twin.cli import main
+from nc_time_twin.core.report import exporter_excel
 from nc_time_twin.core.report.auto_outputs import (
     manual_export_path,
     manual_export_path_in_dir,
@@ -85,6 +86,94 @@ def test_excel_export_uses_consolidated_diagnostics_sheet(write_nc, profile_path
         "feed_recommendation",
     }.intersection(sheet_names)
     assert _xlsx_sheet_first_row(out, "summary") == ["metric", "value"]
+
+
+def test_comparison_exports_include_segment_differences(write_nc, profile_path, artifact_path) -> None:
+    source = write_nc("G21 G90\nG01 X100 F6000")
+    candidate = write_nc("G21 G90\nG01 X100 F100")
+    result = estimate_nc_time_with_comparison(candidate, source, profile_path)
+
+    xlsx = artifact_path("xlsx")
+    export_result(result, xlsx, "xlsx")
+    assert "comparison_segments" in _xlsx_sheet_names(xlsx)
+    header = _xlsx_sheet_first_row(xlsx, "comparison_segments")
+    assert "line_no" in header
+    assert "原始 F" in header
+    assert "優化後 F" in header
+    assert "原始有效 feed" in header
+    assert "優化後有效 feed" in header
+    assert "原始時間" in header
+    assert "優化後時間" in header
+    assert "時間差" in header
+    assert "是否低速異常" in header
+    assert "是否單位疑似異常" in header
+
+    json_out = artifact_path("json")
+    export_result(result, json_out, "json")
+    data = json.loads(json_out.read_text(encoding="utf-8"))
+    assert data["comparison"]["segment_differences"][0]["line_no"] == 2
+
+    csv_out = artifact_path("csv")
+    export_result(result, csv_out, "csv")
+    csv_text = csv_out.read_text(encoding="utf-8-sig")
+    assert "原始 F" in csv_text
+    assert "優化後 F" in csv_text
+
+    html_out = artifact_path("html")
+    export_result(result, html_out, "html")
+    html = html_out.read_text(encoding="utf-8")
+    assert "原始 NC vs 優化 NC 逐段差異分析" in html
+    assert "優化後 F" in html
+
+
+def test_excel_export_downsamples_large_phase2_dynamic_sheet(write_nc, profile_path, artifact_path, monkeypatch) -> None:
+    nc = write_nc("G21 G90\nG01 X100 F1000")
+    result = estimate_nc_time(nc, profile_path, time_model="phase2")
+    result.phase2_dynamic_samples = [
+        {
+            "time_sec": float(index),
+            "velocity_mm_s": float(index % 100),
+            "segment_id": index,
+            "block_index": 0,
+        }
+        for index in range(25)
+    ]
+    out = artifact_path("xlsx")
+    monkeypatch.setattr(exporter_excel, "MAX_EXCEL_PHASE2_DYNAMIC_ROWS", 10)
+    monkeypatch.setattr(exporter_excel, "MAX_CHART_PHASE2_DYNAMIC_POINTS", 10)
+
+    export_result(result, out)
+
+    from openpyxl import load_workbook
+
+    workbook = load_workbook(out, read_only=True)
+    try:
+        assert "phase2_dynamic" in workbook.sheetnames
+        assert workbook["phase2_dynamic"].max_row == 11
+        diagnostics_values = [
+            cell
+            for row in workbook["diagnostics"].iter_rows(values_only=True)
+            for cell in row
+            if isinstance(cell, str)
+        ]
+        assert any("original_samples=25" in value for value in diagnostics_values)
+    finally:
+        workbook.close()
+
+
+def test_excel_export_uses_relative_relationship_targets(write_nc, profile_path, artifact_path) -> None:
+    nc = write_nc("G21 G90\nG01 X100 F1000")
+    result = estimate_nc_time(nc, profile_path, time_model="phase2")
+    out = artifact_path("xlsx")
+
+    export_result(result, out)
+
+    with zipfile.ZipFile(out) as archive:
+        for name in archive.namelist():
+            if not name.endswith(".rels"):
+                continue
+            text = archive.read(name).decode("utf-8")
+            assert 'Target="/xl/' not in text
 
 
 def test_cli_estimate_json(write_nc, profile_path, artifact_path) -> None:
@@ -306,7 +395,8 @@ def _xlsx_sheet_first_row(path, sheet_name: str) -> list[str]:
         rel_id = sheet.attrib["{http://schemas.openxmlformats.org/officeDocument/2006/relationships}id"]
         rels = ET.fromstring(archive.read("xl/_rels/workbook.xml.rels"))
         target = next(item.attrib["Target"] for item in rels if item.attrib["Id"] == rel_id)
-        worksheet = ET.fromstring(archive.read(f"xl/{target}"))
+        worksheet_path = target.lstrip("/") if target.startswith("/") else f"xl/{target}"
+        worksheet = ET.fromstring(archive.read(worksheet_path))
     row = worksheet.find(".//main:row", namespace)
     if row is None:
         return []

@@ -13,7 +13,7 @@ NC-Time-Twin 是一套 NC-Code / G-code 加工時間估測工具，可解析 NC 
 - 支援 feed 單位判斷、feed sanity 檢查、進給值正規化
 - 支援優化前後 NC 檔比較與退化檢查
 - 支援 benchmark NC 產生與實測 CSV 校正 Phase 2 profile
-- 提供 CLI 與 PySide6 GUI；GUI 已整合 CLI 主要功能
+- 提供 CLI、PySide6 GUI 與 FastAPI Web UI；優化前後比較集中在 Web UI 與 CLI/API
 
 ## 安裝
 
@@ -93,11 +93,25 @@ nc-time-twin-gui
 
 GUI 提供：
 
-- Project / 估測頁：選擇 NC 與 machine profile，直接設定 compare、feed-unit、time-model、strict-feed、regression/sanity 警示等 CLI 進階選項。
+- Project / 估測頁：選擇 NC 與 machine profile，直接設定 feed-unit、time-model、strict-feed、sanity 警示等估測選項。
 - Estimate 後：在同一頁顯示中文估測摘要、完整 Results 與 Warnings。
 - Report 輸出：Estimate 只會自動產生 log；Report 必須由使用者按「輸出報表」後，選擇格式與輸出資料夾才會寫入。
 - Tools 頁：整合 feed 正規化、benchmark NC 產生、Phase 2 profile 校正。
 - Blocks / Charts 頁：查看 block 明細、XY toolpath、block time 與 Phase 2 速度曲線。
+
+## Web UI 使用
+
+```powershell
+python -m nc_time_twin.web.server --host 127.0.0.1 --port 8000
+```
+
+或安裝 package 後：
+
+```powershell
+nc-time-twin-web --host 127.0.0.1 --port 8000
+```
+
+Web UI 提供原始 NC 與優化後 NC 上傳、逐段差異分析，以及 Excel / HTML / JSON / CSV 報表下載。
 
 ## 輸出
 
@@ -113,6 +127,11 @@ GUI：
 - Estimate 後只自動產生：
   - `logs/<NC檔名>_<yyyyMMdd_HHmm>.log`
 - Report 由使用者手動輸出，可選格式與輸出資料夾，預設資料夾為 `output/`。
+
+Web UI：
+
+- 比較報表寫入 `output/web_reports/<run_id>/`。
+- Excel 報表包含 `comparison_segments` 工作表，列出原始 F、優化後 F、有效 feed、原始時間、優化後時間、時間差與異常旗標。
 
 ## 文件
 

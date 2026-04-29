@@ -6,7 +6,8 @@ from nc_time_twin.core.feed_sanity import analyze_feed_sanity
 from nc_time_twin.core.geometry.processor import compute_program_geometry
 from nc_time_twin.core.machine.profile import MachineProfile, load_machine_profile
 from nc_time_twin.core.parser.nc_parser import parse_nc_file
-from nc_time_twin.core.report.result_model import EstimateResult, compare_estimate_results, summarize_result
+from nc_time_twin.core.report.comparison import compare_estimate_results
+from nc_time_twin.core.report.result_model import EstimateResult, summarize_result
 from nc_time_twin.core.simulation.time_estimator import estimate_program_time
 
 

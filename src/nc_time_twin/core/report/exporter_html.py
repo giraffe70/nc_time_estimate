@@ -3,6 +3,7 @@ from __future__ import annotations
 from html import escape
 from pathlib import Path
 
+from nc_time_twin.core.report.comparison import comparison_segment_report_rows
 from nc_time_twin.core.report.exporter_common import flattened_rows
 from nc_time_twin.core.report.result_model import EstimateResult
 
@@ -115,6 +116,7 @@ def _comparison_html(result: EstimateResult) -> str:
     summary = [{key: comparison.get(key) for key in summary_keys}]
     band_rows = flattened_rows(comparison.get("feed_band_deltas", []))
     block_rows = flattened_rows(comparison.get("top_time_regression_blocks", []))
+    segment_rows = flattened_rows(comparison_segment_report_rows(comparison))
     return f"""
   <h2>Comparison</h2>
   <table>
@@ -130,6 +132,11 @@ def _comparison_html(result: EstimateResult) -> str:
   <table>
     <thead>{_header_row(block_rows)}</thead>
     <tbody>{"".join(_table_row(row) for row in block_rows)}</tbody>
+  </table>
+  <h2>原始 NC vs 優化 NC 逐段差異分析</h2>
+  <table>
+    <thead>{_header_row(segment_rows)}</thead>
+    <tbody>{"".join(_table_row(row) for row in segment_rows)}</tbody>
   </table>
 """
 

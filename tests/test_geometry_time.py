@@ -164,6 +164,48 @@ def test_toolpathsource_opti_auto_feed_unit_regression(profile_path) -> None:
     assert optimized.feed_sanity_summary["feed_sanity_extreme_raw_count"] > 0
 
 
+def test_comparison_segment_differences_pinpoint_slower_line(write_nc, profile_path, tmp_path) -> None:
+    profile = _profile_with_feed_unit(profile_path, tmp_path, "mm_per_min")
+    source = write_nc("G21 G90\nG01 X100 F6000\nX200 F6000")
+    candidate = write_nc("G21 G90\nG01 X100 F6000\nX200 F100")
+
+    compared = estimate_nc_time_with_comparison(candidate, source, profile)
+    segments = compared.comparison["segment_differences"]
+    top = compared.comparison["top_time_regression_blocks"][0]
+
+    assert {"line_no", "original_feedrate", "optimized_feedrate", "delta_time_sec"}.issubset(segments[0])
+    assert top["line_no"] == 3
+    assert top["candidate_line_no"] == 3
+    assert top["original_feedrate"] == 6000.0
+    assert top["optimized_feedrate"] == 100.0
+    assert top["delta_time_sec"] > 50.0
+
+
+def test_comparison_marks_inserted_and_removed_geometry_segments(write_nc, profile_path) -> None:
+    source = write_nc("G21 G90\nG01 X100 F1000\nX200 F1000")
+    candidate = write_nc("G21 G90\nG01 X50 F1000\nX100 F1000\nX200 F1000")
+
+    compared = estimate_nc_time_with_comparison(candidate, source, profile_path)
+    statuses = {row["match_status"] for row in compared.comparison["segment_differences"]}
+
+    assert compared.comparison["geometry_match"] is False
+    assert {"matched", "original_only", "optimized_only"}.issubset(statuses)
+
+
+def test_comparison_flags_low_speed_and_unit_suspect_segments(write_nc, profile_path, tmp_path) -> None:
+    profile = _profile_with_feed_unit(profile_path, tmp_path, "mm_per_min")
+    source = write_nc("G21 G90 G94\nG01 X100 F6000")
+    candidate = write_nc("G21 G90 G94\nG01 X100 F6")
+
+    compared = estimate_nc_time_with_comparison(candidate, source, profile, strict_feed=True)
+    segment = compared.comparison["segment_differences"][0]
+
+    assert segment["line_no"] == 2
+    assert segment["optimized_effective_feed_mm_min"] == 6.0
+    assert segment["is_low_speed_anomaly"] is True
+    assert segment["is_unit_suspect"] is True
+
+
 def _profile_with_feed_unit(profile_path: Path, tmp_path: Path, feed_unit: str) -> Path:
     text = _strip_feed_unit(profile_path.read_text(encoding="utf-8"))
     text = text.replace('units: "mm"\n', f'units: "mm"\nfeed_unit: "{feed_unit}"\n', 1)

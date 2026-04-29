@@ -10,6 +10,9 @@ readme = "README.md"
 requires-python = ">=3.11"
 dependencies = [
     "pydantic>=2.0",
+    "fastapi>=0.110",
+    "uvicorn>=0.27",
+    "python-multipart>=0.0.9",
     "PyYAML>=6.0",
     "numpy>=1.24",
     "pandas>=2.0",
@@ -26,9 +29,13 @@ dev = [
 [project.scripts]
 nc-time-twin = "nc_time_twin.cli:main"
 nc-time-twin-gui = "nc_time_twin.gui.main_window:main"
+nc-time-twin-web = "nc_time_twin.web.server:main"
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+[tool.setuptools.package-data]
+"nc_time_twin.web" = ["static/*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

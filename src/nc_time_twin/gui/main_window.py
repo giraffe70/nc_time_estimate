@@ -3,6 +3,7 @@ from __future__ import annotations
 from datetime import datetime
 from pathlib import Path
 import sys
+import tempfile
 
 try:
     from PySide6.QtCore import Qt
@@ -22,6 +23,7 @@ try:
         QPushButton,
         QPlainTextEdit,
         QScrollArea,
+        QSpinBox,
         QTableWidget,
         QTableWidgetItem,
         QTabWidget,
@@ -31,15 +33,16 @@ try:
 except ModuleNotFoundError as exc:  # pragma: no cover - depends on optional GUI dependency
     raise SystemExit("PySide6 is required for the GUI. Install project requirements first.") from exc
 
-from nc_time_twin.api import estimate_nc_time, estimate_nc_time_with_comparison
+import yaml
+
+from nc_time_twin.api import estimate_nc_time
 from nc_time_twin.core.feed_normalizer import normalize_feed_file
 from nc_time_twin.core.machine.benchmark_generator import generate_benchmark_nc_code
 from nc_time_twin.core.machine.calibration import calibrate_machine_profile_from_csv
-from nc_time_twin.core.machine.profile import load_machine_profile
+from nc_time_twin.core.machine.profile import MachineProfile, load_machine_profile
 from nc_time_twin.core.report.auto_outputs import manual_export_path_in_dir, write_auto_log
 from nc_time_twin.core.report.exporters import export_result
 from nc_time_twin.core.report.result_model import EstimateResult
-
 
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
@@ -49,34 +52,23 @@ class MainWindow(QMainWindow):
         self.result: EstimateResult | None = None
         self.log_path: Path | None = None
 
-        self.default_profile = str(Path("profiles/default_3axis.yaml").resolve())
-        self.default_output_dir = str(Path("output").resolve())
-
+        self.project_root = Path(__file__).resolve().parents[3]
+        self.default_profile = str((self.project_root / "profiles/default_3axis.yaml").resolve())
+        self.default_output_dir = str((self.project_root / "output").resolve())
         self.nc_path = QLineEdit()
-        self.profile_path = QLineEdit(self.default_profile)
+        self.profile_path = QLineEdit()
+        self.profile_path.setPlaceholderText("可不選；選擇後會載入參數到下方 UI")
         self.status_label = QLabel("就緒")
         self.project_summary = QPlainTextEdit()
         self.project_summary.setReadOnly(True)
         self.project_summary.setMinimumHeight(150)
 
-        self.compare_nc_path = QLineEdit()
-        self.feed_unit = QComboBox()
-        self.feed_unit.addItem("使用 Profile 設定", None)
-        self.feed_unit.addItem("auto", "auto")
-        self.feed_unit.addItem("mm_per_min", "mm_per_min")
-        self.feed_unit.addItem("m_per_min", "m_per_min")
-        self.feed_unit.addItem("inverse_time", "inverse_time")
         self.time_model = QComboBox()
-        self.time_model.addItem("使用 Profile 設定", None)
-        for mode in ("constant_velocity", "trapezoid", "phase2"):
-            self.time_model.addItem(mode, mode)
+        self.time_model.addItem("快速估算（固定速度）", "constant_velocity")
+        self.time_model.addItem("標準估算（含加減速）", "trapezoid")
+        self.time_model.addItem("精準估算（機台動態）", "phase2")
         self.strict_feed = QCheckBox("嚴格檢查 G21/G94 進給")
-        self.fail_on_regression = QCheckBox("顯示回歸失敗警示")
         self.fail_on_sanity_error = QCheckBox("顯示 Feed sanity 失敗警示")
-        self.max_regression_ratio = QDoubleSpinBox()
-        self.max_regression_ratio.setRange(0.0, 10.0)
-        self.max_regression_ratio.setSingleStep(0.01)
-        self.max_regression_ratio.setDecimals(4)
 
         self.export_dir = QLineEdit(self.default_output_dir)
         self.export_checks = {
@@ -96,6 +88,8 @@ class MainWindow(QMainWindow):
         self.chart_container = QWidget()
         self.chart_layout = QVBoxLayout(self.chart_container)
 
+        self.profile_inputs: dict[str, object] = {}
+        self.axis_inputs: dict[str, dict[str, QDoubleSpinBox]] = {}
         self._build_tool_controls()
 
         self.tabs = QTabWidget()
@@ -123,9 +117,24 @@ class MainWindow(QMainWindow):
         profile_button = QPushButton("瀏覽")
         profile_button.clicked.connect(self._browse_profile)
         form.addWidget(profile_button, 1, 2)
+        load_profile_button = QPushButton("載入參數")
+        load_profile_button.clicked.connect(self._load_profile_from_path)
+        form.addWidget(load_profile_button, 1, 3)
+
+        form.addWidget(QLabel("Time Model"), 2, 0)
+        form.addWidget(self.time_model, 2, 1)
+        form.addWidget(
+            QLabel("建議：快速初估選「快速估算」；一般加工選「標準估算」；正式比較或短線段多選「精準估算」。"),
+            3,
+            1,
+            1,
+            3,
+        )
         form.setColumnStretch(1, 1)
         layout.addLayout(form)
 
+        self._build_profile_controls()
+        layout.addWidget(self._build_profile_group())
         layout.addWidget(self._build_advanced_group())
 
         action_row = QHBoxLayout()
@@ -153,25 +162,157 @@ class MainWindow(QMainWindow):
 
         container = QWidget()
         form = QGridLayout(container)
-        form.addWidget(QLabel("比較 NC-Code"), 0, 0)
-        form.addWidget(self.compare_nc_path, 0, 1)
-        compare_button = QPushButton("瀏覽")
-        compare_button.clicked.connect(self._browse_compare_nc)
-        form.addWidget(compare_button, 0, 2)
-        form.addWidget(QLabel("Feed Unit"), 1, 0)
-        form.addWidget(self.feed_unit, 1, 1)
-        form.addWidget(QLabel("Time Model"), 2, 0)
-        form.addWidget(self.time_model, 2, 1)
-        form.addWidget(QLabel("Max Regression Ratio"), 3, 0)
-        form.addWidget(self.max_regression_ratio, 3, 1)
-        form.addWidget(self.strict_feed, 4, 1)
-        form.addWidget(self.fail_on_regression, 5, 1)
-        form.addWidget(self.fail_on_sanity_error, 6, 1)
+        form.addWidget(self.strict_feed, 0, 1)
+        form.addWidget(self.fail_on_sanity_error, 1, 1)
         form.setColumnStretch(1, 1)
 
         layout = QVBoxLayout(group)
         layout.addWidget(container)
         return group
+
+    def _build_profile_controls(self) -> None:
+        if self.profile_inputs:
+            return
+        self.profile_inputs = {
+            "machine_name": QLineEdit(),
+            "controller_name": QLineEdit(),
+            "kinematic_type": QLineEdit("3_axis"),
+            "units": self._combo(["mm", "inch"]),
+            "feed_unit": self._combo(["auto", "mm_per_min", "m_per_min", "inverse_time"]),
+            "rapid_feed_mm_min": self._double(1, 1_000_000, 0),
+            "max_cut_feed_mm_min": self._double(1, 1_000_000, 0),
+            "default_cut_feed_mm_min": self._double(1, 1_000_000, 0),
+            "default_cut_acc_mm_s2": self._double(0.001, 1_000_000, 3),
+            "default_cut_jerk_mm_s3": self._double(0.001, 100_000_000, 3),
+            "arc_tolerance_mm": self._double(0, 1000, 6),
+            "arc_chord_tolerance_mm": self._double(0.000001, 1000, 6),
+            "controller.interpolation_period_ms": self._double(0.001, 100_000, 3),
+            "controller.lookahead_blocks": self._int(0, 1_000_000),
+            "controller.junction_tolerance_mm": self._double(0, 1000, 6),
+            "controller.same_direction_angle_threshold_deg": self._double(0, 180, 3),
+            "controller.reverse_angle_threshold_deg": self._double(0, 180, 3),
+            "controller.lookahead_max_iterations": self._int(1, 1_000_000),
+            "controller.velocity_tolerance_mm_s": self._double(0.000001, 1000, 6),
+            "controller.phase2_max_samples_per_block": self._int(10, 10_000_000),
+            "controller.dwell_p_unit": self._combo(["ms", "sec"]),
+            "controller.dwell_x_unit": self._combo(["sec", "ms"]),
+            "event_time.tool_change_sec": self._double(0, 100_000, 3),
+            "event_time.spindle_start_sec": self._double(0, 100_000, 3),
+            "event_time.spindle_stop_sec": self._double(0, 100_000, 3),
+            "event_time.coolant_on_sec": self._double(0, 100_000, 3),
+            "event_time.coolant_off_sec": self._double(0, 100_000, 3),
+            "event_time.optional_stop_sec": self._double(0, 100_000, 3),
+            "cycle.peck_clearance_mm": self._double(0, 100_000, 3),
+            "reference_return.mode": self._combo(["unestimated", "fixed", "rapid"]),
+            "reference_return.fixed_time_sec": self._double(0, 100_000, 3),
+            "reference_return.position.X": self._double(-1_000_000, 1_000_000, 3),
+            "reference_return.position.Y": self._double(-1_000_000, 1_000_000, 3),
+            "reference_return.position.Z": self._double(-1_000_000, 1_000_000, 3),
+        }
+        for axis in ("X", "Y", "Z"):
+            self.axis_inputs[axis] = {
+                "rapid_velocity_mm_min": self._double(0.001, 1_000_000, 3),
+                "max_velocity_mm_min": self._double(0.001, 1_000_000, 3),
+                "max_acc_mm_s2": self._double(0.001, 1_000_000, 3),
+                "max_jerk_mm_s3": self._double(0.001, 100_000_000, 3),
+            }
+        self._apply_profile_to_ui(load_machine_profile(self.default_profile))
+
+    def _build_profile_group(self) -> QGroupBox:
+        group = QGroupBox("Machine Profile 參數（可直接修改；上傳 Profile 只是載入這些欄位）")
+        group.setCheckable(True)
+        group.setChecked(False)
+        container = QWidget()
+        form = QGridLayout(container)
+
+        rows = [
+            ("machine_name", "Machine Name"),
+            ("controller_name", "Controller Name"),
+            ("kinematic_type", "Kinematic Type"),
+            ("units", "Units"),
+            ("feed_unit", "Feed Unit"),
+            ("rapid_feed_mm_min", "Rapid Feed mm/min"),
+            ("max_cut_feed_mm_min", "Max Cut Feed mm/min"),
+            ("default_cut_feed_mm_min", "Default Cut Feed mm/min"),
+            ("default_cut_acc_mm_s2", "Default Cut Acc mm/s^2"),
+            ("default_cut_jerk_mm_s3", "Default Cut Jerk mm/s^3"),
+            ("arc_tolerance_mm", "Arc Tolerance mm"),
+            ("arc_chord_tolerance_mm", "Arc Chord Tolerance mm"),
+        ]
+        for row, (key, label) in enumerate(rows):
+            form.addWidget(QLabel(label), row, 0)
+            form.addWidget(self.profile_inputs[key], row, 1)
+
+        start_row = len(rows)
+        for axis_index, axis in enumerate(("X", "Y", "Z")):
+            col = axis_index * 2
+            form.addWidget(QLabel(f"{axis} Axis"), start_row, col)
+            for offset, key in enumerate(
+                ("rapid_velocity_mm_min", "max_velocity_mm_min", "max_acc_mm_s2", "max_jerk_mm_s3"),
+                start=1,
+            ):
+                form.addWidget(QLabel(key), start_row + offset, col)
+                form.addWidget(self.axis_inputs[axis][key], start_row + offset, col + 1)
+
+        controller_row = start_row + 6
+        controller_rows = [
+            ("controller.interpolation_period_ms", "Interpolation Period ms"),
+            ("controller.lookahead_blocks", "Lookahead Blocks"),
+            ("controller.junction_tolerance_mm", "Junction Tolerance mm"),
+            ("controller.same_direction_angle_threshold_deg", "Same Direction Angle deg"),
+            ("controller.reverse_angle_threshold_deg", "Reverse Angle deg"),
+            ("controller.lookahead_max_iterations", "Lookahead Max Iterations"),
+            ("controller.velocity_tolerance_mm_s", "Velocity Tolerance mm/s"),
+            ("controller.phase2_max_samples_per_block", "Phase2 Max Samples/Block"),
+            ("controller.dwell_p_unit", "Dwell P Unit"),
+            ("controller.dwell_x_unit", "Dwell X Unit"),
+        ]
+        for offset, (key, label) in enumerate(controller_rows):
+            form.addWidget(QLabel(label), controller_row + offset, 0)
+            form.addWidget(self.profile_inputs[key], controller_row + offset, 1)
+
+        event_rows = [
+            ("event_time.tool_change_sec", "Tool Change sec"),
+            ("event_time.spindle_start_sec", "Spindle Start sec"),
+            ("event_time.spindle_stop_sec", "Spindle Stop sec"),
+            ("event_time.coolant_on_sec", "Coolant On sec"),
+            ("event_time.coolant_off_sec", "Coolant Off sec"),
+            ("event_time.optional_stop_sec", "Optional Stop sec"),
+            ("cycle.peck_clearance_mm", "G83 Peck Clearance mm"),
+            ("reference_return.mode", "Reference Return Mode"),
+            ("reference_return.fixed_time_sec", "Reference Fixed sec"),
+            ("reference_return.position.X", "Reference X"),
+            ("reference_return.position.Y", "Reference Y"),
+            ("reference_return.position.Z", "Reference Z"),
+        ]
+        for offset, (key, label) in enumerate(event_rows):
+            form.addWidget(QLabel(label), controller_row + offset, 2)
+            form.addWidget(self.profile_inputs[key], controller_row + offset, 3)
+
+        form.setColumnStretch(1, 1)
+        form.setColumnStretch(3, 1)
+        layout = QVBoxLayout(group)
+        layout.addWidget(container)
+        container.setVisible(False)
+        group.toggled.connect(container.setVisible)
+        return group
+
+    def _combo(self, values: list[str]) -> QComboBox:
+        combo = QComboBox()
+        combo.addItems(values)
+        return combo
+
+    def _double(self, minimum: float, maximum: float, decimals: int) -> QDoubleSpinBox:
+        spin = QDoubleSpinBox()
+        spin.setRange(minimum, maximum)
+        spin.setDecimals(decimals)
+        spin.setSingleStep(1.0)
+        return spin
+
+    def _int(self, minimum: int, maximum: int) -> QSpinBox:
+        spin = QSpinBox()
+        spin.setRange(minimum, maximum)
+        return spin
 
     def _build_export_group(self) -> QGroupBox:
         group = QGroupBox("報表輸出")
@@ -208,20 +349,20 @@ class MainWindow(QMainWindow):
     def _build_tool_controls(self) -> None:
         self.normalize_nc_path = QLineEdit()
         self.normalize_profile_path = QLineEdit(self.default_profile)
-        self.normalize_out_path = QLineEdit(str(Path("output/normalized.nc").resolve()))
+        self.normalize_out_path = QLineEdit(str((self.project_root / "output/normalized.nc").resolve()))
         self.normalize_input_unit = QComboBox()
         self.normalize_input_unit.addItems(["m_per_min", "mm_per_min"])
         self.normalize_summary = QPlainTextEdit()
         self.normalize_summary.setReadOnly(True)
 
         self.benchmark_profile_path = QLineEdit(self.default_profile)
-        self.benchmark_out_path = QLineEdit(str(Path("output/phase2_benchmark.nc").resolve()))
+        self.benchmark_out_path = QLineEdit(str((self.project_root / "output/phase2_benchmark.nc").resolve()))
         self.benchmark_summary = QPlainTextEdit()
         self.benchmark_summary.setReadOnly(True)
 
         self.calibration_dataset_path = QLineEdit()
-        self.calibration_profile_path = QLineEdit(str(Path("profiles/default_phase2_3axis.yaml").resolve()))
-        self.calibration_out_path = QLineEdit(str(Path("profiles/calibrated_phase2.yaml").resolve()))
+        self.calibration_profile_path = QLineEdit(str((self.project_root / "profiles/default_phase2_3axis.yaml").resolve()))
+        self.calibration_out_path = QLineEdit(str((self.project_root / "profiles/calibrated_phase2.yaml").resolve()))
         self.calibration_nc_base_dir = QLineEdit()
         self.calibration_summary = QPlainTextEdit()
         self.calibration_summary.setReadOnly(True)
@@ -299,9 +440,172 @@ class MainWindow(QMainWindow):
 
     def _browse_profile(self) -> None:
         self._browse_file_into(self.profile_path, "選擇 Machine Profile", "YAML files (*.yaml *.yml);;All files (*)")
+        if self.profile_path.text().strip():
+            self._load_profile_from_path()
 
-    def _browse_compare_nc(self) -> None:
-        self._browse_file_into(self.compare_nc_path, "選擇比較 NC-Code", "NC files (*.nc *.tap *.gcode *.txt);;All files (*)")
+    def _load_profile_from_path(self) -> None:
+        path = self.profile_path.text().strip()
+        if not path:
+            QMessageBox.information(self, "未選擇 Profile", "Machine Profile 可不選；目前會使用下方 UI 參數。")
+            return
+        try:
+            self._apply_profile_to_ui(load_machine_profile(path))
+        except Exception as exc:  # pragma: no cover - GUI behavior
+            QMessageBox.critical(self, "載入 Profile 失敗", str(exc))
+
+    def _apply_profile_to_ui(self, profile: MachineProfile) -> None:
+        self._set_value("machine_name", profile.machine_name)
+        self._set_value("controller_name", profile.controller_name)
+        self._set_value("kinematic_type", profile.kinematic_type)
+        self._set_value("units", profile.units)
+        self._set_value("feed_unit", profile.feed_unit)
+        self._set_value("rapid_feed_mm_min", profile.rapid_feed_mm_min)
+        self._set_value("max_cut_feed_mm_min", profile.max_cut_feed_mm_min)
+        self._set_value("default_cut_feed_mm_min", profile.default_cut_feed_mm_min)
+        self._set_value("default_cut_acc_mm_s2", profile.default_cut_acc_mm_s2)
+        self._set_value("default_cut_jerk_mm_s3", profile.default_cut_jerk_mm_s3)
+        self._set_value("arc_tolerance_mm", profile.arc_tolerance_mm)
+        self._set_value("arc_chord_tolerance_mm", profile.arc_chord_tolerance_mm)
+        self._set_value("controller.interpolation_period_ms", profile.controller.interpolation_period_ms)
+        self._set_value("controller.lookahead_blocks", profile.controller.lookahead_blocks)
+        self._set_value("controller.junction_tolerance_mm", profile.controller.junction_tolerance_mm)
+        self._set_value("controller.same_direction_angle_threshold_deg", profile.controller.same_direction_angle_threshold_deg)
+        self._set_value("controller.reverse_angle_threshold_deg", profile.controller.reverse_angle_threshold_deg)
+        self._set_value("controller.lookahead_max_iterations", profile.controller.lookahead_max_iterations)
+        self._set_value("controller.velocity_tolerance_mm_s", profile.controller.velocity_tolerance_mm_s)
+        self._set_value("controller.phase2_max_samples_per_block", profile.controller.phase2_max_samples_per_block)
+        self._set_value("controller.dwell_p_unit", profile.controller.dwell_p_unit)
+        self._set_value("controller.dwell_x_unit", profile.controller.dwell_x_unit)
+        self._set_value("event_time.tool_change_sec", profile.event_time.tool_change_sec)
+        self._set_value("event_time.spindle_start_sec", profile.event_time.spindle_start_sec)
+        self._set_value("event_time.spindle_stop_sec", profile.event_time.spindle_stop_sec)
+        self._set_value("event_time.coolant_on_sec", profile.event_time.coolant_on_sec)
+        self._set_value("event_time.coolant_off_sec", profile.event_time.coolant_off_sec)
+        self._set_value("event_time.optional_stop_sec", profile.event_time.optional_stop_sec)
+        self._set_value("cycle.peck_clearance_mm", profile.cycle.peck_clearance_mm)
+        self._set_value("reference_return.mode", profile.reference_return.mode)
+        self._set_value("reference_return.fixed_time_sec", profile.reference_return.fixed_time_sec)
+        self._set_value("reference_return.position.X", profile.reference_return.axis_position("X"))
+        self._set_value("reference_return.position.Y", profile.reference_return.axis_position("Y"))
+        self._set_value("reference_return.position.Z", profile.reference_return.axis_position("Z"))
+        self._set_combo_data(self.time_model, profile.time_model.mode)
+        for axis in ("X", "Y", "Z"):
+            axis_profile = profile.axis(axis)
+            self.axis_inputs[axis]["rapid_velocity_mm_min"].setValue(axis_profile.rapid_velocity_mm_min)
+            self.axis_inputs[axis]["max_velocity_mm_min"].setValue(axis_profile.max_velocity_mm_min)
+            self.axis_inputs[axis]["max_acc_mm_s2"].setValue(axis_profile.max_acc_mm_s2)
+            self.axis_inputs[axis]["max_jerk_mm_s3"].setValue(axis_profile.max_jerk_mm_s3)
+
+    def _set_value(self, key: str, value: object) -> None:
+        widget = self.profile_inputs[key]
+        if isinstance(widget, QLineEdit):
+            widget.setText(str(value))
+        elif isinstance(widget, QComboBox):
+            self._set_combo_text(widget, str(value))
+        elif isinstance(widget, QDoubleSpinBox):
+            widget.setValue(float(value))
+        elif isinstance(widget, QSpinBox):
+            widget.setValue(int(value))
+
+    def _set_combo_text(self, combo: QComboBox, value: str) -> None:
+        index = combo.findText(value)
+        if index >= 0:
+            combo.setCurrentIndex(index)
+
+    def _set_combo_data(self, combo: QComboBox, value: str | None) -> None:
+        if value is None:
+            combo.setCurrentIndex(0)
+            return
+        for index in range(combo.count()):
+            if combo.itemData(index) == value or combo.itemText(index) == value:
+                combo.setCurrentIndex(index)
+                return
+
+    def _profile_from_ui(self) -> MachineProfile:
+        time_model = self.time_model.currentData()
+        data = {
+            "machine_name": self._text("machine_name"),
+            "controller_name": self._text("controller_name"),
+            "kinematic_type": self._text("kinematic_type"),
+            "units": self._combo_value("units"),
+            "feed_unit": self._combo_value("feed_unit"),
+            "axes": {
+                axis: {
+                    key: widget.value()
+                    for key, widget in self.axis_inputs[axis].items()
+                }
+                for axis in ("X", "Y", "Z")
+            },
+            "rapid_feed_mm_min": self._number("rapid_feed_mm_min"),
+            "max_cut_feed_mm_min": self._number("max_cut_feed_mm_min"),
+            "default_cut_feed_mm_min": self._number("default_cut_feed_mm_min"),
+            "default_cut_acc_mm_s2": self._number("default_cut_acc_mm_s2"),
+            "default_cut_jerk_mm_s3": self._number("default_cut_jerk_mm_s3"),
+            "arc_tolerance_mm": self._number("arc_tolerance_mm"),
+            "arc_chord_tolerance_mm": self._number("arc_chord_tolerance_mm"),
+            "controller": {
+                "interpolation_period_ms": self._number("controller.interpolation_period_ms"),
+                "lookahead_blocks": self._int_value("controller.lookahead_blocks"),
+                "junction_tolerance_mm": self._number("controller.junction_tolerance_mm"),
+                "same_direction_angle_threshold_deg": self._number("controller.same_direction_angle_threshold_deg"),
+                "reverse_angle_threshold_deg": self._number("controller.reverse_angle_threshold_deg"),
+                "lookahead_max_iterations": self._int_value("controller.lookahead_max_iterations"),
+                "velocity_tolerance_mm_s": self._number("controller.velocity_tolerance_mm_s"),
+                "phase2_max_samples_per_block": self._int_value("controller.phase2_max_samples_per_block"),
+                "dwell_p_unit": self._combo_value("controller.dwell_p_unit"),
+                "dwell_x_unit": self._combo_value("controller.dwell_x_unit"),
+            },
+            "event_time": {
+                "tool_change_sec": self._number("event_time.tool_change_sec"),
+                "spindle_start_sec": self._number("event_time.spindle_start_sec"),
+                "spindle_stop_sec": self._number("event_time.spindle_stop_sec"),
+                "coolant_on_sec": self._number("event_time.coolant_on_sec"),
+                "coolant_off_sec": self._number("event_time.coolant_off_sec"),
+                "optional_stop_sec": self._number("event_time.optional_stop_sec"),
+            },
+            "cycle": {"peck_clearance_mm": self._number("cycle.peck_clearance_mm")},
+            "time_model": {"mode": time_model},
+            "reference_return": {
+                "mode": self._combo_value("reference_return.mode"),
+                "fixed_time_sec": self._number("reference_return.fixed_time_sec"),
+                "position": {
+                    "X": self._number("reference_return.position.X"),
+                    "Y": self._number("reference_return.position.Y"),
+                    "Z": self._number("reference_return.position.Z"),
+                },
+            },
+        }
+        return MachineProfile.model_validate(data)
+
+    def _write_profile_tempfile(self, profile: MachineProfile) -> Path:
+        handle = tempfile.NamedTemporaryFile("w", suffix=".yaml", encoding="utf-8", delete=False)
+        with handle:
+            yaml.safe_dump(profile.model_dump(mode="json"), handle, allow_unicode=True, sort_keys=False)
+        return Path(handle.name)
+
+    def _text(self, key: str) -> str:
+        widget = self.profile_inputs[key]
+        return widget.text() if isinstance(widget, QLineEdit) else ""
+
+    def _combo_value(self, key: str) -> str:
+        widget = self.profile_inputs[key]
+        return widget.currentText() if isinstance(widget, QComboBox) else ""
+
+    def _number(self, key: str) -> float:
+        widget = self.profile_inputs[key]
+        if isinstance(widget, QDoubleSpinBox):
+            return widget.value()
+        if isinstance(widget, QSpinBox):
+            return float(widget.value())
+        raise TypeError(f"{key} is not numeric")
+
+    def _int_value(self, key: str) -> int:
+        widget = self.profile_inputs[key]
+        if isinstance(widget, QSpinBox):
+            return widget.value()
+        if isinstance(widget, QDoubleSpinBox):
+            return int(widget.value())
+        raise TypeError(f"{key} is not integer")
 
     def _browse_export_dir(self) -> None:
         self._browse_dir_into(self.export_dir, "選擇報表輸出資料夾")
@@ -351,30 +655,18 @@ class MainWindow(QMainWindow):
     def _estimate(self) -> None:
         self.status_label.setText("估測中...")
         QApplication.setOverrideCursor(Qt.CursorShape.WaitCursor)
+        temp_profile_path: Path | None = None
         try:
-            feed_unit = self.feed_unit.currentData()
-            time_model = self.time_model.currentData()
+            profile = self._profile_from_ui()
+            temp_profile_path = self._write_profile_tempfile(profile)
             strict_feed = self.strict_feed.isChecked()
-            compare_nc = self.compare_nc_path.text().strip()
-            if compare_nc:
-                self.result = estimate_nc_time_with_comparison(
-                    self.nc_path.text(),
-                    compare_nc,
-                    self.profile_path.text(),
-                    feed_unit=feed_unit,
-                    time_model=time_model,
-                    strict_feed=strict_feed,
-                    max_regression_ratio=self.max_regression_ratio.value(),
-                )
-            else:
-                self.result = estimate_nc_time(
-                    self.nc_path.text(),
-                    self.profile_path.text(),
-                    feed_unit=feed_unit,
-                    time_model=time_model,
-                    strict_feed=strict_feed,
-                )
-            self.log_path = write_auto_log(self.result, self.nc_path.text())
+            self.result = estimate_nc_time(
+                self.nc_path.text(),
+                temp_profile_path,
+                time_model=None,
+                strict_feed=strict_feed,
+            )
+            self.log_path = write_auto_log(self.result, self.nc_path.text(), base_dir=self.project_root)
         except Exception as exc:  # pragma: no cover - GUI behavior
             QMessageBox.critical(self, "估測失敗", str(exc))
             self.status_label.setText("估測失敗")
@@ -382,6 +674,11 @@ class MainWindow(QMainWindow):
         finally:
             if QApplication.overrideCursor() is not None:
                 QApplication.restoreOverrideCursor()
+            if temp_profile_path is not None:
+                try:
+                    temp_profile_path.unlink()
+                except FileNotFoundError:
+                    pass
 
         self._show_project_summary(self.result)
         self._show_summary(self.result)
@@ -489,11 +786,7 @@ class MainWindow(QMainWindow):
         )
 
     def _show_project_summary(self, result: EstimateResult) -> None:
-        comparison = result.comparison or {}
         critical_count = result.feed_sanity_summary.get("feed_sanity_critical_count", 0)
-        regression_warning = (
-            "是" if self.fail_on_regression.isChecked() and comparison.get("is_regression") else "否"
-        )
         sanity_warning = "是" if self.fail_on_sanity_error.isChecked() and critical_count else "否"
         lines = [
             f"總時間：{result.total_time_text}（{result.total_time_sec:.3f} 秒）",
@@ -504,9 +797,7 @@ class MainWindow(QMainWindow):
             f"總路徑長度：{result.total_length_mm:.3f} mm",
             f"警告數：{len(result.warning_list)}",
             f"Feed 單位：{result.summary_dict().get('feed_unit_effective', '無')}",
-            f"是否回歸：{self._yes_no(comparison.get('is_regression'))}",
             f"Feed sanity 嚴重問題數：{critical_count}",
-            f"回歸失敗警示：{regression_warning}",
             f"Feed sanity 失敗警示：{sanity_warning}",
         ]
         if self.log_path is not None:
@@ -532,8 +823,6 @@ class MainWindow(QMainWindow):
 
     def _show_warnings(self, result: EstimateResult) -> None:
         warnings = list(result.warning_list)
-        if self.fail_on_regression.isChecked() and result.comparison.get("is_regression"):
-            warnings.append("回歸失敗警示：候選 NC-Code 比基準 NC-Code 慢。")
         if self.fail_on_sanity_error.isChecked() and result.feed_sanity_summary.get("feed_sanity_critical_count", 0):
             warnings.append("Feed sanity 失敗警示：偵測到嚴重 Feed 問題。")
         self.warning_text.setPlainText("\n".join(warnings))
