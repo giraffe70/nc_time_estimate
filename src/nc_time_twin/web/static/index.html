@@ -39,19 +39,10 @@
           </div>
           <label>
             <span>Time Model</span>
-            <select name="time_model">
-              <option value="constant_velocity">Constant Velocity</option>
-              <option value="trapezoid">Trapezoid</option>
-              <option value="phase2">Phase 2</option>
-            </select>
-          </label>
-          <label>
-            <span>Feed Unit</span>
-            <select name="feed_unit">
-              <option value="auto" selected>auto</option>
-              <option value="mm_per_min">mm_per_min</option>
-              <option value="m_per_min">m_per_min</option>
-              <option value="inverse_time">inverse_time</option>
+            <select id="estimate-time-model" name="time_model">
+              <option value="constant_velocity">快速估算（固定速度）</option>
+              <option value="trapezoid">標準估算（含加減速）</option>
+              <option value="phase2">精準估算（機台動態）</option>
             </select>
           </label>
           <label class="check-row">
@@ -66,6 +57,12 @@
 
         <details class="profile-editor" open>
           <summary>Machine Profile parameters</summary>
+          <input type="hidden" data-profile-key="time_model.mode">
+          <div class="time-model-help" id="time-model-help">
+            <strong id="time-model-help-title">Time Model Parameters</strong>
+            <p id="time-model-help-summary"></p>
+            <p id="time-model-help-fields"></p>
+          </div>
           <div class="profile-grid" id="profile-editor">
             <label><span>Machine Name</span><input data-profile-key="machine_name"></label>
             <label><span>Controller Name</span><input data-profile-key="controller_name"></label>
@@ -125,7 +122,6 @@
             <summary>Cycle / Reference Return</summary>
             <div class="profile-grid">
               <label><span>G83 Peck Clearance (mm)</span><input type="number" step="0.001" data-profile-key="cycle.peck_clearance_mm"></label>
-              <label><span>Time Model Mode</span><select data-profile-key="time_model.mode"><option>constant_velocity</option><option>trapezoid</option><option>phase2</option></select></label>
               <label><span>Reference Mode</span><select data-profile-key="reference_return.mode"><option>unestimated</option><option>fixed</option><option>rapid</option></select></label>
               <label><span>Reference Fixed (sec)</span><input type="number" step="0.001" data-profile-key="reference_return.fixed_time_sec"></label>
               <label><span>Reference X</span><input type="number" step="0.001" data-profile-key="reference_return.position.X"></label>
@@ -161,7 +157,7 @@
         <div class="form-grid">
           <label><span>Original NC</span><input name="original_nc" type="file" accept=".nc,.tap,.gcode,.txt" required></label>
           <label><span>Optimized NC</span><input name="optimized_nc" type="file" accept=".nc,.tap,.gcode,.txt" required></label>
-          <label><span>Time Model</span><select name="time_model"><option value="profile">Profile</option><option value="constant_velocity">Constant Velocity</option><option value="trapezoid">Trapezoid</option><option value="phase2">Phase 2</option></select></label>
+          <label><span>Time Model</span><select name="time_model"><option value="profile">Profile</option><option value="constant_velocity">快速估算（固定速度）</option><option value="trapezoid">標準估算（含加減速）</option><option value="phase2">精準估算（機台動態）</option></select></label>
           <label><span>Feed Unit</span><select name="feed_unit"><option value="">Profile</option><option value="auto">auto</option><option value="mm_per_min">mm_per_min</option><option value="m_per_min">m_per_min</option><option value="inverse_time">inverse_time</option></select></label>
           <label><span>Max Regression Ratio</span><input name="max_regression_ratio" type="number" value="0.0002" step="0.0001" min="0"></label>
           <label class="check-row"><input name="strict_feed" type="checkbox" value="true"><span>Strict feed validation</span></label>

@@ -44,6 +44,71 @@ from nc_time_twin.core.report.auto_outputs import manual_export_path_in_dir, wri
 from nc_time_twin.core.report.exporters import export_result
 from nc_time_twin.core.report.result_model import EstimateResult
 
+
+ALWAYS_VISIBLE_PROFILE_KEYS = {
+    "machine_name",
+    "controller_name",
+    "kinematic_type",
+    "units",
+}
+CONSTANT_VELOCITY_FIELDS = {
+    "feed_unit",
+    "max_cut_feed_mm_min",
+    "default_cut_feed_mm_min",
+    "axes.X.rapid_velocity_mm_min",
+    "axes.Y.rapid_velocity_mm_min",
+    "axes.Z.rapid_velocity_mm_min",
+    "arc_tolerance_mm",
+    "controller.dwell_p_unit",
+    "controller.dwell_x_unit",
+    "event_time.tool_change_sec",
+    "event_time.spindle_start_sec",
+    "event_time.spindle_stop_sec",
+    "event_time.coolant_on_sec",
+    "event_time.coolant_off_sec",
+    "event_time.optional_stop_sec",
+    "cycle.peck_clearance_mm",
+    "reference_return.mode",
+    "reference_return.fixed_time_sec",
+    "reference_return.position.X",
+    "reference_return.position.Y",
+    "reference_return.position.Z",
+}
+TRAPEZOID_FIELDS = CONSTANT_VELOCITY_FIELDS | {"default_cut_acc_mm_s2"}
+PHASE2_FIELDS = TRAPEZOID_FIELDS | {
+    "rapid_feed_mm_min",
+    "default_cut_jerk_mm_s3",
+    "arc_chord_tolerance_mm",
+    "axes.X.max_velocity_mm_min",
+    "axes.X.max_acc_mm_s2",
+    "axes.X.max_jerk_mm_s3",
+    "axes.Y.max_velocity_mm_min",
+    "axes.Y.max_acc_mm_s2",
+    "axes.Y.max_jerk_mm_s3",
+    "axes.Z.max_velocity_mm_min",
+    "axes.Z.max_acc_mm_s2",
+    "axes.Z.max_jerk_mm_s3",
+    "controller.interpolation_period_ms",
+    "controller.lookahead_blocks",
+    "controller.junction_tolerance_mm",
+    "controller.same_direction_angle_threshold_deg",
+    "controller.reverse_angle_threshold_deg",
+    "controller.lookahead_max_iterations",
+    "controller.velocity_tolerance_mm_s",
+    "controller.phase2_max_samples_per_block",
+}
+TIME_MODEL_PROFILE_KEYS = {
+    "constant_velocity": CONSTANT_VELOCITY_FIELDS,
+    "trapezoid": TRAPEZOID_FIELDS,
+    "phase2": PHASE2_FIELDS,
+}
+TIME_MODEL_DESCRIPTIONS = {
+    "constant_velocity": "Constant Velocity：固定速度估算。需設定 Feed、Rapid、Event、Dwell、Cycle 與 Reference Return 參數。",
+    "trapezoid": "Trapezoid：含切削加減速。除固定速度參數外，需設定「切削加速度」，用來估算起步加速與結尾減速。",
+    "phase2": "精準動態估算（含加減速與轉角降速）。用更接近真實機台的方式估算，會考慮各軸速度能力、加減速平順度、轉角降速、連續短線段與圓弧路徑。",
+}
+
+
 class MainWindow(QMainWindow):
     def __init__(self) -> None:
         super().__init__()
@@ -67,6 +132,9 @@ class MainWindow(QMainWindow):
         self.time_model.addItem("快速估算（固定速度）", "constant_velocity")
         self.time_model.addItem("標準估算（含加減速）", "trapezoid")
         self.time_model.addItem("精準估算（機台動態）", "phase2")
+        self.time_model.currentIndexChanged.connect(self._apply_time_model_visibility)
+        self.time_model_parameter_hint = QLabel()
+        self.time_model_parameter_hint.setWordWrap(True)
         self.strict_feed = QCheckBox("嚴格檢查 G21/G94 進給")
         self.fail_on_sanity_error = QCheckBox("顯示 Feed sanity 失敗警示")
 
@@ -90,6 +158,7 @@ class MainWindow(QMainWindow):
 
         self.profile_inputs: dict[str, object] = {}
         self.axis_inputs: dict[str, dict[str, QDoubleSpinBox]] = {}
+        self.profile_row_widgets: dict[str, list[QWidget]] = {}
         self._build_tool_controls()
 
         self.tabs = QTabWidget()
@@ -123,13 +192,7 @@ class MainWindow(QMainWindow):
 
         form.addWidget(QLabel("Time Model"), 2, 0)
         form.addWidget(self.time_model, 2, 1)
-        form.addWidget(
-            QLabel("建議：快速初估選「快速估算」；一般加工選「標準估算」；正式比較或短線段多選「精準估算」。"),
-            3,
-            1,
-            1,
-            3,
-        )
+        form.addWidget(self.time_model_parameter_hint, 3, 1, 1, 3)
         form.setColumnStretch(1, 1)
         layout.addLayout(form)
 
@@ -240,8 +303,10 @@ class MainWindow(QMainWindow):
             ("arc_chord_tolerance_mm", "Arc Chord Tolerance mm"),
         ]
         for row, (key, label) in enumerate(rows):
-            form.addWidget(QLabel(label), row, 0)
+            label_widget = QLabel(label)
+            form.addWidget(label_widget, row, 0)
             form.addWidget(self.profile_inputs[key], row, 1)
+            self._track_profile_row(key, label_widget, self.profile_inputs[key])
 
         start_row = len(rows)
         for axis_index, axis in enumerate(("X", "Y", "Z")):
@@ -251,8 +316,10 @@ class MainWindow(QMainWindow):
                 ("rapid_velocity_mm_min", "max_velocity_mm_min", "max_acc_mm_s2", "max_jerk_mm_s3"),
                 start=1,
             ):
-                form.addWidget(QLabel(key), start_row + offset, col)
+                label_widget = QLabel(key)
+                form.addWidget(label_widget, start_row + offset, col)
                 form.addWidget(self.axis_inputs[axis][key], start_row + offset, col + 1)
+                self._track_profile_row(f"axes.{axis}.{key}", label_widget, self.axis_inputs[axis][key])
 
         controller_row = start_row + 6
         controller_rows = [
@@ -268,8 +335,10 @@ class MainWindow(QMainWindow):
             ("controller.dwell_x_unit", "Dwell X Unit"),
         ]
         for offset, (key, label) in enumerate(controller_rows):
-            form.addWidget(QLabel(label), controller_row + offset, 0)
+            label_widget = QLabel(label)
+            form.addWidget(label_widget, controller_row + offset, 0)
             form.addWidget(self.profile_inputs[key], controller_row + offset, 1)
+            self._track_profile_row(key, label_widget, self.profile_inputs[key])
 
         event_rows = [
             ("event_time.tool_change_sec", "Tool Change sec"),
@@ -286,8 +355,10 @@ class MainWindow(QMainWindow):
             ("reference_return.position.Z", "Reference Z"),
         ]
         for offset, (key, label) in enumerate(event_rows):
-            form.addWidget(QLabel(label), controller_row + offset, 2)
+            label_widget = QLabel(label)
+            form.addWidget(label_widget, controller_row + offset, 2)
             form.addWidget(self.profile_inputs[key], controller_row + offset, 3)
+            self._track_profile_row(key, label_widget, self.profile_inputs[key])
 
         form.setColumnStretch(1, 1)
         form.setColumnStretch(3, 1)
@@ -295,7 +366,11 @@ class MainWindow(QMainWindow):
         layout.addWidget(container)
         container.setVisible(False)
         group.toggled.connect(container.setVisible)
+        self._apply_time_model_visibility()
         return group
+
+    def _track_profile_row(self, key: str, label: QWidget, widget: QWidget) -> None:
+        self.profile_row_widgets[key] = [label, widget]
 
     def _combo(self, values: list[str]) -> QComboBox:
         combo = QComboBox()
@@ -495,6 +570,18 @@ class MainWindow(QMainWindow):
             self.axis_inputs[axis]["max_velocity_mm_min"].setValue(axis_profile.max_velocity_mm_min)
             self.axis_inputs[axis]["max_acc_mm_s2"].setValue(axis_profile.max_acc_mm_s2)
             self.axis_inputs[axis]["max_jerk_mm_s3"].setValue(axis_profile.max_jerk_mm_s3)
+        self._apply_time_model_visibility()
+
+    def _apply_time_model_visibility(self, *_args: object) -> None:
+        mode = str(self.time_model.currentData() or "constant_velocity")
+        visible_keys = ALWAYS_VISIBLE_PROFILE_KEYS | TIME_MODEL_PROFILE_KEYS.get(mode, CONSTANT_VELOCITY_FIELDS)
+        for key, widgets in self.profile_row_widgets.items():
+            visible = key in visible_keys
+            for widget in widgets:
+                widget.setVisible(visible)
+        fields = ", ".join(sorted(TIME_MODEL_PROFILE_KEYS.get(mode, CONSTANT_VELOCITY_FIELDS)))
+        description = TIME_MODEL_DESCRIPTIONS.get(mode, TIME_MODEL_DESCRIPTIONS["constant_velocity"])
+        self.time_model_parameter_hint.setText(f"{description}")
 
     def _set_value(self, key: str, value: object) -> None:
         widget = self.profile_inputs[key]

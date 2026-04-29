@@ -27,7 +27,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[3]
 DEFAULT_PROFILE = PROJECT_ROOT / "profiles" / "default_3axis.yaml"
 WEB_REPORT_ROOT = PROJECT_ROOT / "output" / "web_reports"
 STATIC_DIR = Path(__file__).resolve().parent / "static"
-REPORT_FORMATS = {"xlsx", "html", "json", "csv"}
+REPORT_FORMATS = {"xlsx", "html"}
 DEFAULT_REGRESSION_RATIO = 0.0002
 
 app = FastAPI(title="NC-Time-Twin Web")

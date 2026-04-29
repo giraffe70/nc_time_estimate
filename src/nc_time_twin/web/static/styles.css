@@ -233,6 +233,28 @@ button:disabled {
   padding: 12px;
 }
 
+.time-model-help {
+  margin: 10px 0 14px;
+  border: 1px solid #cfe3dd;
+  border-radius: 8px;
+  background: #f4fbf8;
+  padding: 12px;
+}
+
+.time-model-help strong {
+  display: block;
+  margin-bottom: 6px;
+  color: var(--steel);
+  font-size: 14px;
+}
+
+.time-model-help p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .profile-subgrid {
   margin-top: 16px;
 }
@@ -248,10 +270,22 @@ button:disabled {
   margin-bottom: 12px;
 }
 
+details.profile-editor + .action-row {
+  margin-top: 16px;
+}
+
 .downloads {
   display: flex;
   flex-wrap: wrap;
+  align-items: center;
   gap: 8px;
+}
+
+.downloads-title {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text-muted, #555);
+  margin-right: 4px;
 }
 
 .downloads a {
